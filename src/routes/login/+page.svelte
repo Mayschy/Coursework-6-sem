@@ -1,49 +1,98 @@
 <script>
-  import { onMount } from 'svelte';
-  let isLogin = true;
-  let form = {
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
-    phone: '',
-    address: ''
-  };
-  let error = '';
-  
-  async function submitForm() {
-    const endpoint = isLogin ? '/api/login' : '/api/register';
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    });
-    if (!res.ok) {
-      error = (await res.json()).message || 'Ошибка';
-    } else {
-      location.href = '/';
-    }
-  }
+  // Удаляем import { goto } from '$app/navigation';
+  // Удаляем onMount, так как он здесь не нужен
+
+  // Мы больше не будем использовать form, так как данные будут отправляться через Form Actions
+  // let form = {
+  //   email: '',
+  //   password: ''
+  // };
+  // let error = ''; // Ошибки будут передаваться через form.status
+
+  // Функция submitForm больше не нужна, т.к. SvelteKit Form Actions обработает отправку
+  // async function submitForm() {
+  //   ...
+  // }
+
+  // Импортируем form, которая будет содержать состояние Form Action
+  import { enhance } from '$app/forms';
+  export let form; // Сюда будут приходить данные из Form Action (fail)
+
 </script>
 
-<h2>{isLogin ? 'Login' : 'Register'}</h2>
+<style>
+  form {
+    max-width: 400px;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 2rem;
+    border: 1px solid #eee;
+    border-radius: 1rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    background: #fff;
+  }
 
-<form on:submit|preventDefault={submitForm}>
-  {#if !isLogin}
-    <input placeholder="First Name" bind:value={form.firstName} required />
-    <input placeholder="Last Name" bind:value={form.lastName} required />
-    <input placeholder="Phone" bind:value={form.phone} required />
-    <input placeholder="Address" bind:value={form.address} required />
-  {/if}
-  <input type="email" placeholder="Email" bind:value={form.email} required />
-  <input type="password" placeholder="Password" bind:value={form.password} required />
-  <button type="submit">{isLogin ? 'Login' : 'Register'}</button>
+  input {
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 1rem;
+  }
+
+  button {
+    padding: 12px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background-color 0.3s ease;
+  }
+
+  button:hover {
+    background-color: #0056b3;
+  }
+
+  h2 {
+    text-align: center;
+    margin-bottom: 2rem;
+    color: #333;
+  }
+
+  p {
+    text-align: center;
+    margin-top: 1rem;
+  }
+
+  a {
+    color: #007bff;
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  .error-message {
+    color: red;
+    text-align: center;
+    margin-top: 1rem;
+  }
+</style>
+
+<h2>Вход</h2>
+
+<form method="POST" use:enhance>
+  <input type="email" name="email" placeholder="Email" value={form?.email ?? ''} required />
+  <input type="password" name="password" placeholder="Пароль" required />
+  <button type="submit">Войти</button>
 </form>
 
-<p style="color:red;">{error}</p>
-
-{#if isLogin}
-  <p>Нет аккаунта? <a href="/register">Зарегистрируйтесь</a></p>
-{:else}
-  <p>Уже есть аккаунт? <a href="/login">Войти</a></p>
+{#if form?.error}
+  <p class="error-message">{form.error}</p>
 {/if}
+
+<p>Нет аккаунта? <a href="/register">Зарегистрируйтесь</a></p>

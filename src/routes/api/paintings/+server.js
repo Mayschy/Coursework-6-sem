@@ -3,20 +3,8 @@ import { connectDB } from '$lib/server/db.js';
 
 export async function GET() {
   try {
-    console.log('API /api/paintings: получение данных');
     const db = await connectDB();
-
-    if (!db) {
-      console.error('Соединение с БД не установлено');
-      return json({ error: 'Нет соединения с базой данных' }, { status: 500 });
-    }
-
     const paintings = await db.collection('paintings').find().toArray();
-    console.log(`Найдено картин: ${paintings.length}`);
-
-    if (!paintings.length) {
-      return json([], { status: 200 });
-    }
 
     const transformed = paintings.map(p => ({
       ...p,
@@ -30,31 +18,39 @@ export async function GET() {
   }
 }
 
-// Добавляем POST метод для сохранения новой картины
-export async function POST({ request }) {
+export async function POST({ request, locals }) {
   try {
-    const data = await request.json();
+    const user = locals.user;
 
-    // Простая валидация
-    if (!data.title || !data.image) {
-      return json({ error: 'Необходимо указать title и image' }, { status: 400 });
+    // 🔒 Только админ может добавлять
+    if (!user || user.role !== 'admin') {
+      return json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
-    const db = await connectDB();
+    const data = await request.json();
 
-    if (!db) {
-      return json({ error: 'Нет соединения с базой данных' }, { status: 500 });
+    // Обновляем список обязательных полей
+    const requiredFields = ['title', 'price', 'dimensions', 'previewImage', 'hoverPreviewImage', 'detailImages', 'saleFileUrl'];
+    for (const field of requiredFields) {
+      // Проверяем, что поле не пустое и не undefined/null
+      if (data[field] === undefined || data[field] === null || (typeof data[field] === 'string' && data[field].trim() === '') || (Array.isArray(data[field]) && data[field].length === 0)) {
+        return json({ error: `Необходимо указать ${field}` }, { status: 400 });
+      }
     }
 
     const painting = {
       title: data.title,
-      description: data.description || '',
-      image: data.image,
+      description: data.description || '', // Описание может быть пустым
       price: Number(data.price) || 0,
-      author: data.author || '',
+      dimensions: data.dimensions, // Теперь обязательно
+      previewImage: data.previewImage, // Обязательное поле
+      hoverPreviewImage: data.hoverPreviewImage, // Обязательное поле
+      detailImages: Array.isArray(data.detailImages) ? data.detailImages : [], // Обязательное поле, массив URL
+      saleFileUrl: data.saleFileUrl, // Обязательное поле, URL файла для продажи
       createdAt: data.createdAt ? new Date(data.createdAt) : new Date()
     };
 
+    const db = await connectDB();
     const result = await db.collection('paintings').insertOne(painting);
 
     return json({
