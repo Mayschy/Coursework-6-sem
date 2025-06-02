@@ -1,15 +1,15 @@
 <script>
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { invalidateAll } from '$app/navigation'; // Для обновления состояния корзины
+  import { invalidateAll } from '$app/navigation';
 
   let cartItems = [];
   let isLoading = true;
   let error = '';
   let successMessage = '';
-  let currentOrderId = null; // Для хранения ID заказа после его создания
+  let currentOrderId = null;
   let verificationCode = '';
-  let showVerificationForm = false; // Для показа формы ввода кода
+  let showVerificationForm = false;
 
   async function fetchCart() {
     isLoading = true;
@@ -18,14 +18,14 @@
       const res = await fetch('/api/cart');
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Ошибка при загрузке корзины');
+        throw new Error(errData.error || 'Error loading cart');
       }
       const data = await res.json();
       cartItems = data.cart;
     } catch (e) {
       error = e.message;
-      if (e.message === 'Пользователь не авторизован') {
-        goto('/login'); // Перенаправляем на логин, если сессия истекла
+      if (e.message === 'User not authorized') {
+        goto('/login');
       }
     } finally {
       isLoading = false;
@@ -44,11 +44,11 @@
 
       const result = await res.json();
       if (!res.ok) {
-        throw new Error(result.error || 'Ошибка при удалении из корзины');
+        throw new Error(result.error || 'Error removing from cart');
       }
       successMessage = result.message;
-      await fetchCart(); // Обновляем корзину после удаления
-      await invalidateAll(); // Обновляем данные, например, счетчик корзины в хедере
+      await fetchCart();
+      await invalidateAll();
     } catch (e) {
       error = e.message;
     }
@@ -58,7 +58,7 @@
     error = '';
     successMessage = '';
     if (cartItems.length === 0) {
-      error = 'Ваша корзина пуста.';
+      error = 'Your cart is empty.';
       return;
     }
 
@@ -70,13 +70,13 @@
 
       const result = await res.json();
       if (!res.ok) {
-        throw new Error(result.error || 'Ошибка при оформлении заказа');
+        throw new Error(result.error || 'Error processing checkout');
       }
       successMessage = result.message;
       currentOrderId = result.orderId;
-      showVerificationForm = true; // Показываем форму для ввода кода
-      cartItems = []; // Очищаем корзину на фронтенде
-      await invalidateAll(); // Обновляем данные, например, счетчик корзины в хедере
+      showVerificationForm = true;
+      cartItems = [];
+      await invalidateAll();
     } catch (e) {
       error = e.message;
     }
@@ -86,16 +86,16 @@
     error = '';
     successMessage = '';
     if (!verificationCode) {
-      error = 'Введите код подтверждения.';
+      error = 'Please enter the verification code.';
       return;
     }
     if (!currentOrderId) {
-      error = 'Нет активного заказа для подтверждения.';
+      error = 'No active order to confirm.';
       return;
     }
 
     try {
-      const res = await fetch('/api/checkout/verify', { // Отправляем на новый эндпоинт
+      const res = await fetch('/api/checkout/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: currentOrderId, verificationCode })
@@ -103,19 +103,17 @@
 
       const result = await res.json();
       if (!res.ok) {
-        throw new Error(result.error || 'Ошибка при подтверждении заказа');
+        throw new Error(result.error || 'Error confirming order');
       }
       successMessage = result.message;
-      showVerificationForm = false; // Скрываем форму
-      verificationCode = ''; // Очищаем поле
-      currentOrderId = null; // Сбрасываем ID заказа
-      // Не перенаправляем, пользователь останется на странице корзины с сообщением
+      showVerificationForm = false;
+      verificationCode = '';
+      currentOrderId = null;
     } catch (e) {
       error = e.message;
     }
   }
 
-  // Вычисляемое свойство для общей стоимости
   $: totalAmount = cartItems.reduce((sum, item) => sum + (item.painting?.price || 0), 0);
 
   onMount(() => {
@@ -187,7 +185,7 @@
 
   .remove-button {
     padding: 0.5rem 0.8rem;
-    background-color: #dc3545; /* Красный */
+    background-color: #dc3545;
     color: white;
     border: none;
     border-radius: 0.5rem;
@@ -212,9 +210,9 @@
   .checkout-button {
     display: block;
     width: fit-content;
-    margin: 1.5rem 0 0 auto; /* Располагаем справа */
+    margin: 1.5rem 0 0 auto;
     padding: 1rem 2rem;
-    background-color: #28a745; /* Зеленый */
+    background-color: #28a745;
     color: white;
     border: none;
     border-radius: 0.5rem;
@@ -237,7 +235,7 @@
     padding: 1.5rem;
     border: 1px solid #ccc;
     border-radius: 1rem;
-    background: #f0f8ff; /* Светло-голубой фон */
+    background: #f0f8ff;
     text-align: center;
   }
 
@@ -287,14 +285,14 @@
 </style>
 
 <div class="cart-container">
-  <h1>Ваша корзина</h1>
+  <h1>Your Cart</h1>
 
   {#if isLoading}
-    <p style="text-align:center;">Загрузка корзины...</p>
+    <p style="text-align:center;">Loading cart...</p>
   {:else if error}
     <p class="messages error">{error}</p>
   {:else if cartItems.length === 0 && !showVerificationForm}
-    <p style="text-align:center;">Ваша корзина пуста.</p>
+    <p style="text-align:center;">Your cart is empty.</p>
   {:else}
     <div class="cart-items">
       {#each cartItems as item (item.painting._id)}
@@ -306,10 +304,10 @@
             <div class="item-details">
               <h3>{item.painting.title}</h3>
               <p>{item.painting.dimensions}</p>
-              <p>{item.painting.price} руб.</p>
+              <p>{item.painting.price} $</p>
             </div>
             <div class="item-actions">
-              <button class="remove-button" on:click={() => removeFromCart(item.painting._id)}>Удалить</button>
+              <button class="remove-button" on:click={() => removeFromCart(item.painting._id)}>Remove</button>
             </div>
           </div>
         {/if}
@@ -317,22 +315,22 @@
     </div>
 
     <div class="cart-summary">
-      Общая стоимость: {totalAmount} $
+      Total Amount: {totalAmount} $
     </div>
 
     {#if !showVerificationForm}
       <button class="checkout-button" on:click={checkout} disabled={cartItems.length === 0}>
-        Купить
+        Checkout
       </button>
     {/if}
   {/if}
 
   {#if showVerificationForm}
     <div class="verification-form">
-      <h3>Подтверждение заказа</h3>
-      <p>{successMessage || 'На вашу почту отправлен код подтверждения. Введите его ниже.'}</p>
-      <input type="text" placeholder="Введите код" bind:value={verificationCode} />
-      <button on:click={verifyOrder}>Подтвердить</button>
+      <h3>Order Confirmation</h3>
+      <p>{successMessage || 'A verification code has been sent to your email. Please enter it below.'}</p>
+      <input type="text" placeholder="Enter code" bind:value={verificationCode} />
+      <button on:click={verifyOrder}>Confirm</button>
       {#if error}
         <p class="messages error">{error}</p>
       {/if}

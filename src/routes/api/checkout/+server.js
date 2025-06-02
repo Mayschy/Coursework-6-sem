@@ -3,9 +3,8 @@ import { json } from '@sveltejs/kit';
 import { connectDB } from '$lib/server/db.js';
 import { ObjectId } from 'mongodb';
 import nodemailer from 'nodemailer';
-import crypto from 'crypto'; // Для генерации кода
+import crypto from 'crypto';
 
-// Настройка Nodemailer (перенеси это в отдельный утилитарный файл, если уже есть)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -16,47 +15,42 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// POST: Создать заказ и отправить код подтверждения
 export async function POST({ request, locals }) {
   try {
     const user = locals.user;
 
     if (!user) {
-      return json({ error: 'Пользователь не авторизован' }, { status: 401 });
+      return json({ error: 'User not authorized' }, { status: 401 });
     }
 
     const db = await connectDB();
     const userDoc = await db.collection('users').findOne({ _id: new ObjectId(user._id) });
 
     if (!userDoc || !userDoc.cart || userDoc.cart.length === 0) {
-      return json({ error: 'Корзина пуста' }, { status: 400 });
+      return json({ error: 'Cart is empty' }, { status: 400 });
     }
 
-    // Получаем детали картин из корзины
     const paintingIdsInCart = userDoc.cart.map(item => new ObjectId(item.paintingId));
     const paintingsInCart = await db.collection('paintings').find({ _id: { $in: paintingIdsInCart } }).toArray();
 
     if (paintingsInCart.length !== userDoc.cart.length) {
-      // Некоторые картины могли быть удалены
-      return json({ error: 'Некоторые товары в корзине недоступны. Обновите корзину.', refreshCart: true }, { status: 400 });
+      return json({ error: 'Some items in the cart are unavailable. Please refresh your cart.', refreshCart: true }, { status: 400 });
     }
 
-    // Формируем элементы заказа (без quantity)
     const orderItems = paintingsInCart.map(painting => ({
       paintingId: painting._id,
-      priceAtPurchase: painting.price, // Фиксируем цену на момент покупки
+      priceAtPurchase: painting.price,
       title: painting.title,
       saleFileUrl: painting.saleFileUrl
     }));
 
     const totalAmount = orderItems.reduce((sum, item) => sum + item.priceAtPurchase, 0);
 
-    // Генерируем код подтверждения (6 цифр)
-    const verificationCode = crypto.randomBytes(3).toString('hex').toUpperCase(); // 3 байта = 6 символов HEX
-    const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // Код действителен 10 минут
+    const verificationCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     const newOrder = {
-      _id: new ObjectId(), // Генерируем новый ID для заказа
+      _id: new ObjectId(),
       userId: new ObjectId(user._id),
       items: orderItems,
       totalAmount: totalAmount,
@@ -64,40 +58,36 @@ export async function POST({ request, locals }) {
       status: 'pending_verification',
       verificationCode: verificationCode,
       codeExpiresAt: codeExpiresAt,
-      // В дальнейшем можно добавить: deliveryAddress, paymentStatus и т.д.
     };
 
-    // Сохраняем заказ в коллекцию 'orders' (нужно создать эту коллекцию)
     await db.collection('orders').insertOne(newOrder);
 
-    // Очищаем корзину пользователя
     await db.collection('users').updateOne(
       { _id: new ObjectId(user._id) },
       { $set: { cart: [] } }
     );
 
-    // Отправляем email с кодом подтверждения
     const mailOptions = {
       from: 'Art Store <no-reply@artstore.com>',
       to: userDoc.email,
-      subject: 'Ваш код подтверждения заказа на ArtStore',
+      subject: 'Your ArtStore Order Confirmation Code',
       html: `
-        <p>Здравствуйте, ${userDoc.firstName}!</p>
-        <p>Для подтверждения вашего заказа на сумму ${totalAmount} руб. используйте следующий код:</p>
+        <p>Hello, ${userDoc.firstName}!</p>
+        <p>To confirm your order for ${totalAmount} RUB, please use the following code:</p>
         <h2 style="color: #007bff;">${verificationCode}</h2>
-        <p>Этот код действителен в течение 10 минут.</p>
-        <p>Если вы не совершали этот заказ, проигнорируйте это письмо.</p>
+        <p>This code is valid for 10 minutes.</p>
+        <p>If you did not place this order, please ignore this email.</p>
         <br>
-        <p>С уважением,<br>Команда ArtStore</p>
+        <p>Sincerely,<br>The ArtStore Team</p>
       `
     };
 
     await transporter.sendMail(mailOptions);
 
-    return json({ message: 'Заказ создан. Код подтверждения отправлен на вашу почту.', orderId: newOrder._id.toString() }, { status: 200 });
+    return json({ message: 'Order created. Confirmation code sent to your email.', orderId: newOrder._id.toString() }, { status: 200 });
 
   } catch (error) {
-    console.error('Ошибка при оформлении заказа:', error);
-    return json({ error: 'Ошибка сервера' }, { status: 500 });
+    console.error('Error processing checkout:', error);
+    return json({ error: 'Server error' }, { status: 500 });
   }
 }

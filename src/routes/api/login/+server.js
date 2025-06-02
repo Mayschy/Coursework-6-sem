@@ -12,15 +12,15 @@ export async function POST({ request, cookies }) {
     throw error(401, 'Invalid credentials');
   }
 
-  // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+
   cookies.set('user_id', user._id.toString(), {
     path: '/',
-    httpOnly: true, // <-- ДОБАВЛЕНО: кука доступна только по HTTP
-    secure: process.env.NODE_ENV === 'production', // <-- ДОБАВЛЕНО: только по HTTPS в продакшене
-    sameSite: 'lax', // <-- ДОБАВЛЕНО: защита от CSRF
-    maxAge: 60 * 60 * 24 * 7 // <-- ИЗМЕНЕНО: 1 неделя (60 сек * 60 мин * 24 часа * 7 дней)
+    httpOnly: true, 
+    secure: process.env.NODE_ENV === 'production', 
+    sameSite: 'lax', 
+    maxAge: 60 * 60 * 24 * 7 
   });
-  // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+ 
 
   return json({ success: true });
 }

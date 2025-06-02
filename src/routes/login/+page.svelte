@@ -1,22 +1,8 @@
 <script>
-  // Удаляем import { goto } from '$app/navigation';
-  // Удаляем onMount, так как он здесь не нужен
-
-  // Мы больше не будем использовать form, так как данные будут отправляться через Form Actions
-  // let form = {
-  //   email: '',
-  //   password: ''
-  // };
-  // let error = ''; // Ошибки будут передаваться через form.status
-
-  // Функция submitForm больше не нужна, т.к. SvelteKit Form Actions обработает отправку
-  // async function submitForm() {
-  //   ...
-  // }
-
-  // Импортируем form, которая будет содержать состояние Form Action
+ 
+ 
   import { enhance } from '$app/forms';
-  export let form; // Сюда будут приходить данные из Form Action (fail)
+  export let form; 
 
 </script>
 

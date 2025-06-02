@@ -8,12 +8,12 @@ let db;
 export async function connectDB() {
   if (!db) {
     try {
-      console.log('Подключение к MongoDB...');
+      console.log('Connecting to MongoDB...');
       await client.connect();
-      db = client.db('artstore'); // название базы данных
-      console.log('Подключение к MongoDB установлено');
+      db = client.db('artstore');
+      console.log('MongoDB connection established');
     } catch (error) {
-      console.error('Ошибка подключения к MongoDB:', error);
+      console.error('Error connecting to MongoDB:', error);
       throw error;
     }
   }

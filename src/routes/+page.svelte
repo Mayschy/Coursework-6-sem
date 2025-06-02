@@ -3,29 +3,25 @@
   
   let currentIndex = 0;
   let slides = [
-    "/ban.jpg",   // Путь к картинке в папке static
+    "/ban.jpg",
     "/image1.jpg",
     "/image2.jpg"
   ];
 
   let autoSlideInterval;
 
-  // Функция переключения на следующий слайд
   const nextSlide = () => {
     currentIndex = (currentIndex + 1) % slides.length;
   };
 
-  // Функция переключения на предыдущий слайд
   const prevSlide = () => {
     currentIndex = (currentIndex - 1 + slides.length) % slides.length;
   };
 
-  // Запуск автопереключения слайдов
   const startAutoSlide = () => {
-    autoSlideInterval = setInterval(nextSlide, 5000); // Переключение каждые 5 секунд
+    autoSlideInterval = setInterval(nextSlide, 5000);
   };
 
-  // Сброс автопереключения
   const resetAutoSlide = () => {
     clearInterval(autoSlideInterval);
     startAutoSlide();
@@ -49,7 +45,6 @@
     {/each}
   </div>
   
-  <!-- Кнопки для переключения слайдов -->
   <button class="prev" on:click={prevSlide}>&#10094;</button>
   <button class="next" on:click={nextSlide}>&#10095;</button>
 </section>

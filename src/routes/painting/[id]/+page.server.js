@@ -1,4 +1,3 @@
-// D:\new store pj\artstore-svelte\src\routes\painting\[id]\+page.server.js
 import { error } from '@sveltejs/kit';
 import { connectDB } from '$lib/server/db';
 import { ObjectId } from 'mongodb';
@@ -7,14 +6,14 @@ export async function load({ params, locals }) {
   const paintingId = params.id;
 
   if (!ObjectId.isValid(paintingId)) {
-    throw error(404, 'Картина не найдена');
+    throw error(404, 'Painting not found');
   }
 
   const db = await connectDB();
   const painting = await db.collection('paintings').findOne({ _id: new ObjectId(paintingId) });
 
   if (!painting) {
-    throw error(404, 'Картина не найдена');
+    throw error(404, 'Painting not found');
   }
 
   let hasPurchased = false;
@@ -40,10 +39,9 @@ export async function load({ params, locals }) {
       price: painting.price,
       previewImage: painting.previewImage,
       hoverPreviewImage: painting.hoverPreviewImage || '',
-      detailImages: painting.detailImages || [], // <--- Убедись, что это здесь
+      detailImages: painting.detailImages || [],
       saleFileUrl: painting.saleFileUrl,
       dimensions: painting.dimensions,
-      // ... любые другие поля
     },
     hasPurchased: hasPurchased
   };

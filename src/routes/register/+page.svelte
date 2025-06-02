@@ -21,7 +21,7 @@
     const data = await res.json();
 
     if (!res.ok) {
-      error = data.message || 'Ошибка при регистрации';
+      error = data.message || 'Registration failed';
     } else {
       success = true;
       setTimeout(() => goto('/login'), 3000);
@@ -64,16 +64,16 @@
   }
 </style>
 
-<h2 style="text-align: center;">Регистрация нового пользователя</h2>
+<h2 style="text-align: center;">Register New User</h2>
 
 <form on:submit|preventDefault={register}>
-  <input placeholder="Имя" bind:value={form.firstName} required />
-  <input placeholder="Фамилия" bind:value={form.lastName} required />
+  <input placeholder="First Name" bind:value={form.firstName} required />
+  <input placeholder="Last Name" bind:value={form.lastName} required />
   <input type="email" placeholder="Email" bind:value={form.email} required />
-  <input type="password" placeholder="Пароль" bind:value={form.password} required />
-  <input placeholder="Телефон" bind:value={form.phone} required />
-  <input placeholder="Адрес" bind:value={form.address} required />
-  <button type="submit">Зарегистрироваться</button>
+  <input type="password" placeholder="Password" bind:value={form.password} required />
+  <input placeholder="Phone" bind:value={form.phone} required />
+  <input placeholder="Address" bind:value={form.address} required />
+  <button type="submit">Register</button>
 </form>
 
 {#if error}
@@ -81,5 +81,5 @@
 {/if}
 
 {#if success}
-  <p class="success">Регистрация успешна! Перенаправление на страницу входа...</p>
+  <p class="success">Registration successful! Redirecting to login page...</p>
 {/if}

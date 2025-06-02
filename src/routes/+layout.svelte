@@ -1,9 +1,9 @@
 <script>
-  import '../styles/styles.css'; // Твои глобальные стили
+  import '../styles/styles.css'; 
   import Header from '$lib/Header.svelte';
   import Footer from '$lib/Footer.svelte';
 
-  // Получаем data из +layout.server.js
+
   export let data;
 </script>
 

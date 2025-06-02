@@ -1,18 +1,13 @@
 <script>
-  import { invalidateAll } from '$app/navigation'; // Для обновления состояния корзины
-  import { enhance } from '$app/forms'; // Если ты используешь Form Actions для корзины
+  import { invalidateAll } from '$app/navigation';
+  import { enhance } from '$app/forms';
 
-  export let data; // Получаем данные из +page.server.js
-
-  // Если у тебя нет page.server.js, то data будет приходить из layout.server.js,
-  // и тогда тебе придется здесь делать fetch к API для деталей картины и проверки покупки.
-  // Предполагаем, что data.painting и data.hasPurchased приходят из page.server.js
+  export let data;
 
   let showModal = false;
   let successMessage = '';
   let errorMessage = '';
 
-  // Функция для добавления в корзину (если ты используешь fetch напрямую, а не Form Actions)
   async function addToCart() {
     errorMessage = '';
     successMessage = '';
@@ -24,16 +19,16 @@
       });
 
       if (res.ok) {
-        successMessage = 'Картина добавлена в корзину!';
+        successMessage = 'Painting added to cart!';
         showModal = true;
-        await invalidateAll(); // Обновляем данные layout (cartCount)
+        await invalidateAll();
       } else {
         const errData = await res.json();
-        errorMessage = errData.message || 'Ошибка добавления в корзину.';
+        errorMessage = errData.message || 'Error adding to cart.';
         showModal = true;
       }
     } catch (e) {
-      errorMessage = 'Ошибка сети при добавлении в корзину.';
+      errorMessage = 'Network error when adding to cart.';
       showModal = true;
       console.error(e);
     }
@@ -109,7 +104,7 @@
   }
 
   .add-to-cart-btn {
-    background-color: #28a745; /* Зеленый */
+    background-color: #28a745;
     color: white;
   }
   .add-to-cart-btn:hover {
@@ -118,7 +113,7 @@
   }
 
   .download-btn {
-    background-color: #007bff; /* Синий */
+    background-color: #007bff;
     color: white;
   }
   .download-btn:hover {
@@ -126,7 +121,6 @@
     transform: translateY(-2px);
   }
 
-  /* Modal Styles */
   .modal-overlay {
     position: fixed;
     top: 0;
@@ -191,10 +185,10 @@
       width: 100%;
     }
   }
- .detail-images-gallery {
+  .detail-images-gallery {
     margin-top: 2rem;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Адаптивная сетка */
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 1rem;
   }
 
@@ -203,10 +197,9 @@
     height: auto;
     border-radius: 8px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    object-fit: cover; /* Чтобы изображения не искажались */
+    object-fit: cover;
   }
 
-  /* Добавь стили для адаптивности, если нужно */
   @media (max-width: 768px) {
     .detail-images-gallery {
       grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
@@ -223,26 +216,38 @@
     <div>
       <h1>{data.painting.title}</h1>
       <p>{data.painting.description}</p>
-      <p>Размеры: {data.painting.dimensions}</p>
+      <p>Dimensions: {data.painting.dimensions}</p>
       <p class="price">{data.painting.price} $</p>
     </div>
 
     {#if data.painting.detailImages && data.painting.detailImages.length > 0}
       <div class="detail-images-gallery">
         {#each data.painting.detailImages as imageUrl}
-          <img src={imageUrl} alt={`Детальное изображение картины ${data.painting.title}`} />
+          <img src={imageUrl} alt={`Detail image of ${data.painting.title}`} />
         {/each}
       </div>
     {/if}
     <div class="actions">
       {#if data.hasPurchased}
-        <a href={data.painting.saleFileUrl} download class="download-btn">Скачать</a>
+        <a href={data.painting.saleFileUrl} download class="download-btn">Download</a>
       {:else}
-        <button on:click={addToCart} class="add-to-cart-btn">Добавить в корзину</button>
+        <button on:click={addToCart} class="add-to-cart-btn">Add to Cart</button>
       {/if}
     </div>
   </div>
 </div>
 
 {#if showModal}
-  {/if}
+  <div class="modal-overlay" on:click={() => (showModal = false)}>
+    <div class="modal-content" on:click|stopPropagation>
+      {#if successMessage}
+        <h3 class="success-text">Success!</h3>
+        <p>{successMessage}</p>
+      {:else if errorMessage}
+        <h3 class="error-text">Error!</h3>
+        <p>{errorMessage}</p>
+      {/if}
+      <button on:click={() => (showModal = false)}>Close</button>
+    </div>
+  </div>
+{/if}

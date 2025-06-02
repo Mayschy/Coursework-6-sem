@@ -1,12 +1,11 @@
 <script>
-  // Принимаем проп data, который содержит user и cartCount
+  // Приймаємо проп data, який містить user і cartCount
   export let data;
 </script>
 
 <style>
-  /* ... (твои существующие стили для header, nav, nav-links и т.д.) ... */
-
-  .cart-link {
+  
+.cart-link {
     background-color: #6c757d; /* Серый */
     color: white;
     position: relative;
@@ -38,38 +37,53 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   }
 
-  /* ... (мобильные стили, если есть) ... */
+ 
+  @media (max-width: 768px) {
+    nav {
+      flex-direction: column;
+      gap: 1rem;
+    }
+    nav > div {
+      width: 100%;
+      justify-content: center; 
+    }
+    ul {
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.8rem;
+    }
+  }
 </style>
 
-<header style="padding: 1rem 2rem; border-bottom: 1px solid #ccc;">
-  <nav style="display: flex; justify-content: space-between; align-items: center;">
-
+<header>
+  <nav>
     <div style="flex: 1; display: flex; justify-content: center;">
-      <ul style="display: flex; gap: 1.5rem; list-style: none; padding: 0; margin: 0;">
+      <ul>
         <li><a href="/">Home</a></li>
         <li><a href="/gallery">Gallery</a></li>
         <li><a href="/about">About</a></li>
-        <li><a href="/contact">Contact</a></li>
-        <li><a href="/test-upload">Upload (Admin)</a></li>
-        </ul>
+        {#if data?.user?.role === 'admin'}
+         <li><a href="/test-upload">Upload (Admin)</a></li>
+        {/if}
+      </ul>
     </div>
 
     <div style="display: flex; align-items: center; gap: 1rem;">
       {#if data?.user}
-        <span>Привет, {data.user.firstName}!</span>
+        <span>Привіт, {data.user.firstName}!</span>
         <a href="/cart" class="cart-link">
-          Корзина
+          Кошик
           {#if data.cartCount > 0}
             <span class="cart-count">{data.cartCount}</span>
           {/if}
         </a>
-        <a href="/logout" class="logout-btn">Выйти</a>
+        <a href="/logout" class="logout-btn">Вийти</a>
       {:else}
         <a href="/login" class="login-btn">
-          <i class="fas fa-user"></i> Войти / Зарегистрироваться
+          <i class="fas fa-user"></i> Увійти / Зареєструватися
         </a>
         <a href="/cart" class="cart-link">
-          Корзина
+          Кошик
           {#if data.cartCount > 0}
             <span class="cart-count">{data.cartCount}</span>
           {/if}

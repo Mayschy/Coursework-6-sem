@@ -17,31 +17,29 @@ export async function POST({ request }) {
 
   await db.collection('users').insertOne(user);
 
-  // Уведомление по почте (простая версия)
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465, // SSL порт
-    secure: true, // использовать SSL
+    port: 465,
+    secure: true,
     auth: {
-      user: process.env.GMAIL_USER, // <-- Проверь, что это не undefined
-      pass: process.env.GMAIL_PASS  // <-- Проверь, что это не undefined
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_PASS
     }
   });
 
   console.log('Attempting to send registration email...');
-  console.log('GMAIL_USER:', process.env.GMAIL_USER ? 'Loaded' : 'NOT LOADED'); // Логируем статус загрузки переменных
+  console.log('GMAIL_USER:', process.env.GMAIL_USER ? 'Loaded' : 'NOT LOADED');
 
   try {
-    const info = await transporter.sendMail({ // Добавил info для лога ответа
+    const info = await transporter.sendMail({
       from: 'Art Store <no-reply@artstore.com>',
       to: user.email,
-      subject: 'Добро пожаловать на ArtStore!',
-      text: `Здравствуйте, ${user.firstName}! Спасибо за регистрацию на нашем сайте.`
+      subject: 'Welcome to ArtStore!',
+      text: `Hello, ${user.firstName}! Thank you for registering on our website.`
     });
-    console.log('Email sent successfully:', info.messageId); // Успешная отправка
+    console.log('Email sent successfully:', info.messageId);
   } catch (error) {
-    console.error('Ошибка отправки письма:', error); // <-- ЭТО САМЫЙ ВАЖНЫЙ ЛОГ
-    // В случае ошибки отправки письма, не блокируем регистрацию, но логируем.
+    console.error('Error sending email:', error);
   }
 
   return json({ success: true });
