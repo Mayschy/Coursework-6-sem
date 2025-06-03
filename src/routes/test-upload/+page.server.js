@@ -7,7 +7,6 @@ export async function load({ locals }) {
     throw redirect(303, '/login');
   }
 
-  // Перевіряємо роль користувача
   if (locals.user.role !== 'admin') {
     throw redirect(303, '/');
   }

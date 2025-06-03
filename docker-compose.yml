@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    image: mongo:7.0.9
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - artstore-network
+
+  app:
+    build: .
+    ports:
+      - "3000:3000" # Expose the port SvelteKit listens on
+    environment:
+      # ✅ Добавьте здесь переменные окружения, которые нужны вашему приложению
+      # Например, строка подключения к MongoDB
+      NODE_ENV: production
+      MONGO_URL: mongodb://db:Misha2015@artshop.ax4fwuw.mongodb.net/?retryWrites=true&w=majority&appName=ArtShop
+      # Добавьте другие важные переменные, если они есть (например, SECRET_KEY, CLOUDINARY_URL и т.д.)
+    depends_on:
+      - db
+    networks:
+      - artstore-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  artstore-network:
+    driver: bridge

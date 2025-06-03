@@ -1,15 +1,15 @@
 <script>
-  import '../styles/styles.css'; 
-  import Header from '$lib/Header.svelte';
-  import Footer from '$lib/Footer.svelte';
+    import '../styles/styles.css';
+    import Header from '$lib/Header.svelte';
+    import Footer from '$lib/Footer.svelte';
 
-
-  export let data;
+    export let data; 
 </script>
 
-<Header {data} />
+<Header /> 
 
 <div class="wrapper">
-  <slot></slot> </div>
+    <slot></slot>
+</div>
 
-<Footer />
+<Footer {data} />

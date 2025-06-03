@@ -1,7 +1,9 @@
 <script>
     import { page } from '$app/stores';
-    import { onMount } from 'svelte'; // onMount нам все еще нужен, если есть другая логика там, как fetchCart, но для window.addEventListener - нет.
+    import { onMount } from 'svelte';
 
+    export let data;
+    
     let showContactModal = false;
 
     let subject = '';
@@ -10,8 +12,8 @@
     let success = '';
     let isLoading = false;
 
-    $: user = $page.data.session?.user; // Теперь это должно работать!
-    $: userName = user?.name || ''; // Предполагается, что у user есть свойство 'name' (мы его добавили в hooks.server.js)
+    $: user = data.session?.user;
+    $: userName = user?.name || '';
     $: userEmail = user?.email || '';
 
     function resetForm() {
@@ -33,7 +35,7 @@
         isLoading = true;
 
         if (!user) {
-            error = 'Будь ласка, увійдіть, щоб надіслати повідомлення.';
+            error = 'Please log in to send a message.';
             isLoading = false;
             return;
         }
@@ -53,59 +55,50 @@
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.error || 'Помилка при відправці повідомлення.');
+                throw new Error(data.error || 'Error sending message.');
             }
 
-            success = 'Повідомлення успішно відправлено адміністраторам!';
+            success = 'Message successfully sent to administrators!';
             resetForm();
             setTimeout(() => {
                 closeModal();
             }, 2000);
 
         } catch (e) {
-            error = e.message || 'Виникла непередбачена помилка при відправці повідомлення.';
-            console.error('Помилка відправки контакту:', e);
+            error = e.message || 'An unexpected error occurred while sending the message.';
+            console.error('Contact submission error:', e);
         } finally {
             isLoading = false;
         }
     }
 
-    // --- Svelte Action для слушателя событий Escape ---
-    // Эту функцию action можно использовать только на клиенте.
     function trapFocus(node) {
         function handleKeydown(event) {
             if (event.key === 'Escape') {
                 closeModal();
             }
         }
-        // Добавляем слушателя к самому узлу (modal-overlay)
+
         node.addEventListener('keydown', handleKeydown);
 
-        // Возвращаем функцию очистки
         return {
             destroy() {
                 node.removeEventListener('keydown', handleKeydown);
             }
         };
     }
-    // --- КОНЕЦ Svelte Action ---
 
-    // --- Отладочные логи для проверки `$page.data` ---
     onMount(() => {
         console.log('Footer Component Mounted:');
-        console.log('Current $page.data:', $page.data);
-        console.log('Current $page.data.session:', $page.data.session);
-        console.log('Current user (from $page.data.session?.user):', user);
+        console.log('Current $page.data (from global store):', $page.data);
+        console.log('Current data prop (explicitly passed):', data);
+        console.log('Current user (from data.session?.user):', user);
         console.log('Is user logged in (from user variable)?', !!user);
         console.log('Is contact button disabled?', !user);
     });
-    // --- Конец отладочных логов ---
-
 </script>
 
 <style>
-    /* ... (ваши стили без изменений) ... */
-
     footer {
         background-color: #333;
         color: #fff;
@@ -142,7 +135,6 @@
         cursor: not-allowed;
     }
 
-    /* Стилі для модального вікна - перенесені з ContactModal.svelte */
     .modal-overlay {
         position: fixed;
         top: 0;
@@ -278,14 +270,15 @@
         text-decoration: underline;
     }
 </style>
+
 <footer>
     <p>Contact: +1 999 123-45-67 | info@artstore.com</p>
     <button
         class="contact-button"
         on:click={() => (showContactModal = true)}
-        disabled={!$page.data.session?.user}
+        disabled={!user}
     >
-        Зв'язатися з нами
+        Contact Us
     </button>
     <p>© 2025 ArtStore. All rights reserved.</p>
 
@@ -298,15 +291,15 @@
             use:trapFocus
         >
             <div class="modal-content">
-                <button class="close-button" on:click={closeModal} aria-label="Закрити вікно контакту">&times;</button>
-                <h2>Зв'язатися з адміністраторами</h2>
+                <button class="close-button" on:click={closeModal} aria-label="Close contact window">&times;</button>
+                <h2>Contact Administrators</h2>
 
                 {#if !user}
                     <p class="messages error">
-                        Щоб надіслати повідомлення адміністраторам, будь ласка, <a href="/login" class="login-link">увійдіть</a>.
+                        To send a message to administrators, please <a href="/login" class="login-link">log in</a>.
                     </p>
                 {:else}
-                    <p class="user-info">Від: **{userName}** ({userEmail})</p>
+                    <p class="user-info">From: **{userName}** ({userEmail})</p>
                 {/if}
 
                 {#if error}
@@ -319,17 +312,17 @@
 
                 <form on:submit|preventDefault={handleSubmit}>
                     <div>
-                        <label for="subject">Тема повідомлення:</label>
+                        <label for="subject">Subject:</label>
                         <input id="subject" type="text" bind:value={subject} required disabled={!user} />
                     </div>
 
                     <div>
-                        <label for="message">Ваше повідомлення:</label>
+                        <label for="message">Your Message:</label>
                         <textarea id="message" bind:value={message} required disabled={!user}></textarea>
                     </div>
 
                     <button type="submit" disabled={isLoading || !user}>
-                        {isLoading ? 'Відправляємо...' : 'Надіслати повідомлення'}
+                        {isLoading ? 'Sending...' : 'Send Message'}
                     </button>
                 </form>
             </div>

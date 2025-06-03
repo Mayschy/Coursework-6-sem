@@ -1,85 +1,80 @@
 // src/routes/api/contact-admin/+server.js
 import { json } from '@sveltejs/kit';
 import nodemailer from 'nodemailer';
-// import { GMAIL_USER, GMAIL_PASS } from '$env/static/private'; // Эту строку УДАЛЯЕМ!
-
-import { connectDB } from '$lib/server/db'; 
+import { connectDB } from '$lib/server/db';
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // For port 587, use false
-  auth: {
-    user: process.env.GMAIL_USER, // ИСПОЛЬЗУЕМ process.env
-    pass: process.env.GMAIL_PASS  // ИСПОЛЬЗУЕМ process.env
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS
+    },
+    tls: {
+        rejectUnauthorized: false
+    }
 });
 
 export async function POST({ request, locals }) {
+    let database;
+    try {
+        database = await connectDB();
+    } catch (error) {
+        console.error('Failed to connect to DB for admin emails:', error);
+        return json({ error: 'Server could not connect to the database.' }, { status: 500 });
+    }
 
-  let database;
-  try {
-    database = await connectDB();
-  } catch (error) {
-    console.error('Failed to connect to DB for admin emails:', error);
-    return json({ error: 'Сервер не смог подключиться к базе данных.' }, { status: 500 });
-  }
+    if (!locals.user) {
+        return json({ error: 'Authorization required to send a message.' }, { status: 401 });
+    }
 
+    const { userName, userEmail, subject, message } = await request.json();
 
-  if (!locals.user) {
-    return json({ error: 'Потрібна авторизація для відправки повідомлення.' }, { status: 401 });
-  }
+    if (!userName || !userEmail || !subject || !message) {
+        return json({ error: 'Please fill in all fields.' }, { status: 400 });
+    }
 
-  const { userName, userEmail, subject, message } = await request.json();
+    let adminEmailList = [];
+    try {
+        const usersCollection = database.collection('users');
+        const admins = await usersCollection.find({ role: 'admin' })
+            .project({ email: 1, _id: 0 })
+            .toArray();
 
-  if (!userName || !userEmail || !subject || !message) {
-    return json({ error: 'Будь ласка, заповніть усі поля.' }, { status: 400 });
-  }
+        adminEmailList = admins.map(admin => admin.email);
 
-  let adminEmailList = [];
-  try {
-    const usersCollection = database.collection('users');
-    const admins = await usersCollection.find({ role: 'admin' })
-                                        .project({ email: 1, _id: 0 })
-                                        .toArray();
+        if (adminEmailList.length === 0) {
+            console.warn("No administrators with 'admin' role found in the database for sending messages.");
+            return json({ error: 'Currently no administrators available to receive messages.' }, { status: 503 });
+        }
 
-    adminEmailList = admins.map(admin => admin.email);
+    } catch (dbError) {
+        console.error('Error retrieving admin emails from DB:', dbError);
+        return json({ error: 'Failed to retrieve administrator list. Please try again later.' }, { status: 500 });
+    }
 
-    if (adminEmailList.length === 0) {
-      console.warn("Не знайдено адміністраторів з роллю 'admin' у базі даних для відправки повідомлень.");
-      return json({ error: 'Наразі немає адміністраторів для отримання повідомлень.' }, { status: 503 });
-    }
+    const mailOptions = {
+        from: process.env.GMAIL_USER,
+        to: adminEmailList.join(','),
+        subject: `New message from ArtStore from: ${userName} - ${subject}`,
+        html: `
+            <p><strong>Message from ArtStore user</strong></p>
+            <p><strong>Name:</strong> ${userName}</p>
+            <p><strong>Email:</strong> ${userEmail}</p>
+            <p><strong>Subject:</strong> ${subject}</p>
+            <p><strong>Message:</strong></p>
+            <p>${message.replace(/\n/g, '<br>')}</p>
+            <hr>
+            <p>This is an automated message. Please do not reply to it.</p>
+        `
+    };
 
-  } catch (dbError) {
-    console.error('Помилка при отриманні email-ів адміністраторів з БД:', dbError);
-    return json({ error: 'Не вдалося отримати список адміністраторів. Спробуйте пізніше.' }, { status: 500 });
-  }
-
-  const mailOptions = {
-    // ИСПОЛЬЗУЕМ process.env
-    from: process.env.GMAIL_USER, 
-    to: adminEmailList.join(','),
-    subject: `Нове повідомлення з ArtStore від: ${userName} - ${subject}`,
-    html: `
-      <p>**Повідомлення від користувача ArtStore**</p>
-      <p><strong>Ім'я:</strong> ${userName}</p>
-      <p><strong>Email:</strong> ${userEmail}</p>
-      <p><strong>Тема:</strong> ${subject}</p>
-      <p><strong>Повідомлення:</strong></p>
-      <p>${message.replace(/\n/g, '<br>')}</p>
-      <hr>
-      <p>Це автоматичне повідомлення. Будь ласка, не відповідайте на нього.</p>
-    `
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    return json({ message: 'Повідомлення успішно відправлено.' }, { status: 200 });
-  } catch (error) {
-    console.error('Помилка відправки email:', error);
-    return json({ error: 'Не вдалося відправити повідомлення. Спробуйте пізніше.' }, { status: 500 });
-  }
+    try {
+        await transporter.sendMail(mailOptions);
+        return json({ message: 'Message sent successfully.' }, { status: 200 });
+    } catch (error) {
+        console.error('Error sending email:', error);
+        return json({ error: 'Failed to send message. Please try again later.' }, { status: 500 });
+    }
 }
