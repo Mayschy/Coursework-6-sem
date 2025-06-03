@@ -23,7 +23,7 @@
 </script>
 
 <style>
-   
+    /* ... (ваши стили остаются прежними) ... */
 
     .login-btn, .logout-btn {
         background-color: #8d9278;
@@ -104,6 +104,7 @@
                 <li><a href="/about">About</a></li>
                 {#if user?.role === 'admin'}
                     <li><a href="/test-upload">Upload (Admin)</a></li>
+                    <li><a href="/admin/statistics">Statistics (Admin)</a></li> 
                 {/if}
             </ul>
         </div>

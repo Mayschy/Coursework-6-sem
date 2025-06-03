@@ -7,7 +7,8 @@
     "baseUrl": ".",
     "paths": {
       "$lib/*": ["src/lib/*"],
-      "$env/*": [".svelte-kit/types/env/*"] // Эта строка КРАЙНЕ ВАЖНА
+      // Измените путь для $env - это очень важно!
+      "$env/*": ["./.svelte-kit/types/src/env/*"]
     },
     "moduleResolution": "node",
     "allowJs": true,
@@ -18,7 +19,9 @@
     "src/**/*.js",
     "src/**/*.ts",
     "src/**/*.svelte",
-    ".svelte-kit/types/**/*.d.ts" // И эта строка тоже КРАЙНЕ ВАЖНА
+    // Убедитесь, что эти строки присутствуют и корректны
+    "./.svelte-kit/types/**/*.d.ts",
+    "./.svelte-kit/types/src/env/**/*.d.ts"
   ],
   "exclude": ["node_modules", ".svelte-kit", "build"]
 }

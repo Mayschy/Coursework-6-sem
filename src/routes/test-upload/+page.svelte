@@ -2,9 +2,10 @@
     import { onMount } from 'svelte';
     import { invalidateAll } from '$app/navigation';
 
-    let showFormModal = false;
-    let isEditing = false;
-    let currentPaintingId = null;
+    // --- Variables for adding/editing painting (consolidated) ---
+    let showFormModal = false; // Controls visibility of the main form modal (add/edit)
+    let isEditing = false; // True if we are editing, false if adding new
+    let currentPaintingId = null; // ID of the painting being edited
 
     let title = '';
     let description = '';
@@ -13,21 +14,26 @@
     let previewImageFile = null;
     let hoverPreviewImageFile = null;
     let detailImageFiles = [];
-    let saleFileUrl = '';
+    let saleFile = null; // Changed from saleFileUrl to File object
 
-    let formError = '';
-    let formSuccess = '';
-    let isSubmitting = false;
+    let formError = ''; // Error message for the add/edit form
+    let formSuccess = ''; // Success message for the add/edit form
+    let isSubmitting = false; // Loading state for form submission
 
+    // Local URLs for previewing images before upload
     let localPreviewImageUrl = '';
     let localHoverPreviewImageUrl = '';
     let localDetailImageUrls = [];
+    // No local URL for saleFile as it's not an image for direct preview
 
+    // Existing Cloudinary URLs for images when editing
     let existingPreviewImageUrl = '';
     let existingHoverPreviewImageUrl = '';
     let existingDetailImageUrls = [];
+    let existingSaleFileUrl = ''; // To store the existing Dropbox URL when editing
 
 
+    // --- Variables for managing painting list and deletion ---
     let paintings = [];
     let isFetchingPaintings = true;
     let deleteError = '';
@@ -64,6 +70,16 @@
         existingDetailImageUrls = existingDetailImageUrls.filter(url => url !== urlToRemove);
     }
 
+    // --- NEW: Function to handle file input change for sale file ---
+    function handleSaleFileChange(event) {
+        const target = event.target;
+        if (target instanceof HTMLInputElement && target.files && target.files.length > 0) {
+            saleFile = target.files[0];
+        } else {
+            saleFile = null;
+        }
+    }
+
 
     async function uploadFileToCloudinary(file, folder) {
         if (!file) return null;
@@ -91,6 +107,34 @@
         }
     }
 
+    // --- NEW: Function to upload sale file to Dropbox ---
+    async function uploadFileToDropbox(file) {
+        if (!file) return null;
+
+        const formData = new FormData();
+        formData.append('file', file); // 'file' - это имя, которое ожидает бэкенд
+        // Опционально, можно передать путь или папку
+        // formData.append('path', 'some_specific_folder'); 
+
+        try {
+            const res = await fetch('/api/upload-dropbox', { // Новый API-маршрут
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await res.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            return data.url;
+        } catch (e) {
+            console.error(`Error uploading ${file.name} to Dropbox:`, e);
+            formError = `Error uploading sale file "${file.name}": ${e.message}`;
+            return null;
+        }
+    }
+
 
     async function handleSubmitPainting() {
         formError = '';
@@ -104,8 +148,10 @@
         let uploadedPreviewUrl = existingPreviewImageUrl;
         let uploadedHoverPreviewUrl = existingHoverPreviewImageUrl;
         let uploadedDetailImageUrls = [...existingDetailImageUrls];
+        let uploadedSaleFileUrl = existingSaleFileUrl; // Initialize with existing URL
 
         try {
+            // Upload main preview image
             if (previewImageFile) {
                 uploadedPreviewUrl = await uploadFileToCloudinary(previewImageFile, 'artstore_previews');
                 if (!uploadedPreviewUrl) {
@@ -119,6 +165,7 @@
             }
 
 
+            // Upload hover preview image
             if (hoverPreviewImageFile) {
                 uploadedHoverPreviewUrl = await uploadFileToCloudinary(hoverPreviewImageFile, 'artstore_hover_previews');
                 if (!uploadedHoverPreviewUrl) {
@@ -128,6 +175,7 @@
             }
 
 
+            // Upload detail images
             for (const file of detailImageFiles) {
                 const url = await uploadFileToCloudinary(file, 'artstore_details');
                 if (url) {
@@ -138,6 +186,20 @@
                 }
             }
 
+            // --- NEW: Upload sale file to Dropbox ---
+            if (saleFile) {
+                uploadedSaleFileUrl = await uploadFileToDropbox(saleFile);
+                if (!uploadedSaleFileUrl) {
+                    isSubmitting = false;
+                    return;
+                }
+            } else if (!existingSaleFileUrl && !isEditing) { // Check if required for new additions
+                formError = 'Please select a sale file.';
+                isSubmitting = false;
+                return;
+            }
+
+            // Validation after all uploads (if images or files are conditionally required)
             if (!uploadedPreviewUrl) {
                 formError = 'Main preview is required.';
                 isSubmitting = false;
@@ -153,6 +215,11 @@
                  isSubmitting = false;
                  return;
             }
+            if (!uploadedSaleFileUrl) {
+                formError = 'Sale file is required.';
+                isSubmitting = false;
+                return;
+            }
 
 
             const paintingData = {
@@ -163,7 +230,7 @@
                 previewImage: uploadedPreviewUrl,
                 hoverPreviewImage: uploadedHoverPreviewUrl,
                 detailImages: uploadedDetailImageUrls,
-                saleFileUrl,
+                saleFileUrl: uploadedSaleFileUrl, // Use the URL from Dropbox
             };
 
             let res;
@@ -211,7 +278,7 @@
         previewImageFile = null;
         hoverPreviewImageFile = null;
         detailImageFiles = [];
-        saleFileUrl = '';
+        saleFile = null; // Reset saleFile to null
         formError = '';
         formSuccess = '';
         isSubmitting = false;
@@ -221,6 +288,7 @@
         existingPreviewImageUrl = '';
         existingHoverPreviewImageUrl = '';
         existingDetailImageUrls = [];
+        existingSaleFileUrl = ''; // Reset existingSaleFileUrl
         isEditing = false;
         currentPaintingId = null;
     }
@@ -308,7 +376,7 @@
         description = painting.description || '';
         price = painting.price.toString();
         dimensions = painting.dimensions;
-        saleFileUrl = painting.saleFileUrl || '';
+        existingSaleFileUrl = painting.saleFileUrl || ''; // Load existing Dropbox URL
 
         existingPreviewImageUrl = painting.previewImage || '';
         existingHoverPreviewImageUrl = painting.hoverPreviewImage || '';
@@ -414,7 +482,7 @@
     .modal-content form input[type="text"],
     .modal-content form input[type="number"],
     .modal-content form textarea,
-    .modal-content form input[type="url"] {
+    .modal-content form input[type="url"] { /* Keep url type for existing saleFileUrl display */
         width: calc(100% - 20px);
         padding: 8px;
         border: 1px solid #ccc;
@@ -831,9 +899,18 @@
                 </div>
 
                 <div>
-                    <label for="saleFileUrl">Sale File Link (Dropbox/Google Drive):</label>
-                    <input id="saleFileUrl" type="url" bind:value={saleFileUrl} placeholder="e.g., https://www.dropbox.com/s/abcdef/my_art.jpg?dl=0" required />
-                    <small>Upload the file to Dropbox/Google Drive and paste the public link here.</small>
+                    <label for="saleFile">Sale File (PDF, DOC, etc.):</label>
+                    {#if existingSaleFileUrl && !saleFile}
+                        <p>Current file: <a href={existingSaleFileUrl} target="_blank" rel="noopener noreferrer">View Current File</a></p>
+                        <small>Current file from Dropbox. Select a new one to replace.</small>
+                    {/if}
+                 <input
+    id="saleFile"
+    type="file"
+    accept="image/png, image/jpeg, .png, .jpg, .jpeg" 
+    on:change={handleSaleFileChange}
+/>
+                    <small>{isEditing && !saleFile ? 'Leave empty to keep current.' : 'Required for new additions.'}</small>
                 </div>
 
                 <button type="submit" disabled={isSubmitting}>
