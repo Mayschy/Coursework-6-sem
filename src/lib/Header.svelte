@@ -8,7 +8,7 @@
     async function handleLogout() {
         try {
             const response = await fetch('/logout', { method: 'GET' });
-
+            
             if (response.ok) {
                 console.log('User logged out successfully. Invalidating data...');
                 await invalidateAll();
@@ -23,49 +23,13 @@
 </script>
 
 <style>
-    /* Ваши существующие стили для header и nav */
-    header {
-        background-color: #f7f7f7;
-        padding: 1rem 0;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    nav {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 0 20px;
-    }
-
-    nav ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        gap: 1.5rem;
-    }
-
-    nav ul li a {
-        text-decoration: none;
-        color: #333;
-        font-weight: 600;
-        padding: 0.5rem 0.8rem;
-        border-radius: 0.4rem;
-        transition: background-color 0.3s ease, color 0.3s ease;
-    }
-
-    nav ul li a:hover {
-        background-color: #e0e0e0;
-        color: #000;
-    }
+    /* ... (ваши стили остаются прежними) ... */
 
     .login-btn, .logout-btn {
         background-color: #8d9278;
         color: white;
         border: none;
-        /* УДАЛИТЕ ЭТУ СТРОКУ, ОНА ВЫЗЫВАЕТ ПРОБЛЕМУ: margin-right: 90px; */
+        margin-right: 90px;
         padding: 0.5rem 1rem;
         border-radius: 0.5rem;
         cursor: pointer;
@@ -76,7 +40,6 @@
         align-items: center;
         gap: 0.5rem;
         transition: background-color 0.3s ease;
-        white-space: nowrap; /* Добавлено, чтобы текст не переносился */
     }
 
     .login-btn:hover, .logout-btn:hover {
@@ -93,7 +56,6 @@
         text-decoration: none;
         font-weight: bold;
         transition: background-color 0.3s ease, color 0.3s ease;
-        white-space: nowrap; /* Добавлено, чтобы текст не переносился */
     }
 
     .cart-link:hover {
@@ -120,30 +82,18 @@
         nav {
             flex-direction: column;
             gap: 1rem;
-            align-items: stretch; /* Растянуть элементы на всю ширину */
         }
-        
-        /* Этот блок управляет контейнером с кнопками справа */
-        nav > div:last-child { /* Целимся в последний div внутри nav */
-            width: 100%; /* Занимаем всю ширину */
-            justify-content: center; /* Центрируем содержимое */
-            flex-wrap: wrap; /* Разрешаем элементам переноситься на новую строку */
-            gap: 10px; /* ЭТОТ GAP СОЗДАСТ РАССТОЯНИЕ МЕЖДУ КНОПКАМИ */
-            flex-direction: column; /* ЭТО КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: кнопки будут в колонку */
-            align-items: center; /* Центрируем кнопки по горизонтали, если они в колонке */
+        nav > div {
+            width: 100%;
+            justify-content: center;
         }
-
-        /* Дополнительные стили для самих кнопок на мобильных, чтобы они выглядели аккуратнее */
-        .login-btn, .cart-link {
-            width: 80%; /* Задаем ширину, чтобы кнопки не были слишком узкими, но и не слишком широкими */
-            max-width: 280px; /* Ограничиваем максимальную ширину */
-            justify-content: center; /* Центрируем содержимое кнопки */
-        }
-
         ul {
             flex-wrap: wrap;
             justify-content: center;
             gap: 0.8rem;
+        }
+        .login-btn, .logout-btn {
+            margin-right: 50px;
         }
     }
 </style>
