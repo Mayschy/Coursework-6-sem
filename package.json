@@ -18,7 +18,7 @@
 		"@eslint/js": "^9.18.0",
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/adapter-vercel": "^5.7.2",
-		"@sveltejs/vite-plugin-svelte": "^5.0.0",
+		"@sveltejs/vite-plugin-svelte": "^5.1.0",
 		"@tailwindcss/forms": "^0.5.9",
 		"@tailwindcss/typography": "^0.5.15",
 		"@tailwindcss/vite": "^4.0.0",
@@ -35,12 +35,15 @@
 		"typescript": "^5.0.0"
 	},
 	"dependencies": {
+		"@sveltejs/kit": "^2.21.2",
 		"bcryptjs": "^3.0.2",
 		"chart.js": "^4.4.9",
 		"cloudinary": "^2.6.1",
 		"dotenv": "^16.5.0",
 		"dropbox": "^10.34.0",
 		"mongodb": "^6.16.0",
-		"nodemailer": "^7.0.3"
+		"nodemailer": "^7.0.3",
+		"svelte": "^5.33.14",
+		"vite": "^6.3.5"
 	}
 }

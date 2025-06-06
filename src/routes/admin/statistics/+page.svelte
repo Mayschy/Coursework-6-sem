@@ -1,12 +1,9 @@
-<script lang="ts">
-    import { onMount, onDestroy } from 'svelte'; // Добавляем onDestroy для очистки графиков
-    // Удаляем: import { Bar, Line, Pie } from 'svelte5-chartjs';
-
-    // Импортируем ChartJS и registerables для удобства регистрации всех нужных частей
-    import { Chart as ChartJS, registerables, type ChartOptions } from 'chart.js';
+<script>
+    import { onMount, onDestroy, afterUpdate } from 'svelte';
+    import { Chart as ChartJS, registerables } from 'chart.js';
 
     // Регистрируем все необходимые компоненты Chart.js ОДИН РАЗ
-    ChartJS.register(...registerables); // Используем registerables для простой регистрации всего
+    ChartJS.register(...registerables);
 
     // --- Ваши существующие переменные ---
     let totalRevenue = 0;
@@ -18,7 +15,7 @@
     let isLoading = true;
     let error = null;
 
-    // Data for charts (эти переменные остаются такими же)
+    // Data for charts
     let topProductsChartData = {
         labels: [],
         datasets: [
@@ -45,13 +42,13 @@
                 pointHoverBackgroundColor: '#fff',
                 pointHoverBorderColor: 'rgba(153, 102, 255, 1)',
                 data: [],
-                tension: 0.4, // Line smoothing
+                tension: 0.4,
             },
         ],
     };
 
-    // Options for charts (эти переменные остаются такими же)
-    const baseChartOptions: ChartOptions<'bar' | 'line'> = {
+    // Options for charts
+    const baseChartOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
@@ -65,17 +62,18 @@
         },
     };
 
-    let topProductsChartOptions: ChartOptions<'bar'> = JSON.parse(JSON.stringify(baseChartOptions));
-    let salesOverTimeChartOptions: ChartOptions<'line'> = JSON.parse(JSON.stringify(baseChartOptions));
+    let topProductsChartOptions = JSON.parse(JSON.stringify(baseChartOptions));
+    let salesOverTimeChartOptions = JSON.parse(JSON.stringify(baseChartOptions));
 
     // --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ЭЛЕМЕНТОВ CANVAS И ЭКЗЕМПЛЯРОВ ГРАФИКОВ ---
-    let topProductsCanvas: HTMLCanvasElement;
-    let salesOverTimeCanvas: HTMLCanvasElement;
-    let topProductsChartInstance: ChartJS<'bar'>;
-    let salesOverTimeChartInstance: ChartJS<'line'>;
+    let topProductsCanvas;
+    let salesOverTimeCanvas;
+    let topProductsChartInstance = null;
+    let salesOverTimeChartInstance = null;
 
     // --- onMount и fetchData изменены для инициализации Chart.js ---
     onMount(async () => {
+        console.log("onMount: Component mounted. Starting data fetch.");
         await fetchData();
     });
 
@@ -117,34 +115,7 @@
             salesOverTimeChartData.datasets[0].label = 'Total Monthly Revenue';
             salesOverTimeChartOptions.plugins.title.text = 'Total Revenue by Month';
 
-            // --- Инициализация графиков Chart.js после получения данных ---
-            if (topProductsChartInstance) {
-                // Если график уже существует, обновляем его данные
-                topProductsChartInstance.data = topProductsChartData;
-                topProductsChartInstance.options = topProductsChartOptions;
-                topProductsChartInstance.update();
-            } else if (topProductsCanvas) {
-                // Если график еще не инициализирован, создаем новый
-                topProductsChartInstance = new ChartJS(topProductsCanvas, {
-                    type: 'bar', // Тип графика
-                    data: topProductsChartData,
-                    options: topProductsChartOptions,
-                });
-            }
-
-            if (salesOverTimeChartInstance) {
-                // Если график уже существует, обновляем его данные
-                salesOverTimeChartInstance.data = salesOverTimeChartData;
-                salesOverTimeChartInstance.options = salesOverTimeChartOptions;
-                salesOverTimeChartInstance.update();
-            } else if (salesOverTimeCanvas) {
-                // Если график еще не инициализирован, создаем новый
-                salesOverTimeChartInstance = new ChartJS(salesOverTimeCanvas, {
-                    type: 'line', // Тип графика
-                    data: salesOverTimeChartData,
-                    options: salesOverTimeChartOptions,
-                });
-            }
+            console.log("fetchData: Data received. Preparing to draw charts.");
 
         } catch (e) {
             console.error('Error loading statistics:', e);
@@ -154,19 +125,63 @@
         }
     }
 
-    // --- Очистка графиков при уничтожении компонента ---
-    onDestroy(() => {
-        if (topProductsChartInstance) {
-            topProductsChartInstance.destroy();
-        }
-        if (salesOverTimeChartInstance) {
-            salesOverTimeChartInstance.destroy();
+    // --- Используем afterUpdate для инициализации/обновления графиков ---
+    afterUpdate(() => {
+        console.log("afterUpdate: Running chart initialization/update logic.");
+
+        if (!isLoading && !error && topProductsCanvas && salesOverTimeCanvas) {
+            console.log("afterUpdate: Data loaded and canvases available.");
+
+            // Топ-продукты (гистограмма)
+            if (topProductsChartInstance) {
+                console.log("afterUpdate: Updating existing Top Products chart.");
+                topProductsChartInstance.data = topProductsChartData;
+                topProductsChartInstance.options = topProductsChartOptions;
+                topProductsChartInstance.update();
+            } else {
+                console.log("afterUpdate: Creating new Top Products chart.");
+                topProductsChartInstance = new ChartJS(topProductsCanvas, {
+                    type: 'bar',
+                    data: topProductsChartData,
+                    options: topProductsChartOptions,
+                });
+            }
+
+            // Продажи по времени (линейный график)
+            if (salesOverTimeChartInstance) {
+                console.log("afterUpdate: Updating existing Sales Over Time chart.");
+                salesOverTimeChartInstance.data = salesOverTimeChartData;
+                salesOverTimeChartInstance.options = salesOverTimeChartOptions;
+                salesOverTimeChartInstance.update();
+            } else {
+                console.log("afterUpdate: Creating new Sales Over Time chart.");
+                salesOverTimeChartInstance = new ChartJS(salesOverTimeCanvas, {
+                    type: 'line',
+                    data: salesOverTimeChartData,
+                    options: salesOverTimeChartOptions,
+                });
+            }
+        } else {
+            console.log("afterUpdate: Charts not initialized/updated. isLoading:", isLoading, "error:", error, "topProductsCanvas:", !!topProductsCanvas, "salesOverTimeCanvas:", !!salesOverTimeCanvas);
         }
     });
 
-    // NEW FUNCTION FOR ARCHIVING STATISTICS (остается без изменений)
+    // --- Очистка графиков при уничтожении компонента ---
+    onDestroy(() => {
+        console.log("onDestroy: Destroying chart instances.");
+        if (topProductsChartInstance) {
+            topProductsChartInstance.destroy();
+            topProductsChartInstance = null;
+        }
+        if (salesOverTimeChartInstance) {
+            salesOverTimeChartInstance.destroy();
+            salesOverTimeChartInstance = null;
+        }
+    });
+
+    // NEW FUNCTION FOR ARCHIVING STATISTICS
     async function handleArchiveOld() {
-        if (!confirm('Are you sure you want to archive all current completed orders? They will no longer be included in current statistics after this.')) {
+        if (!confirm('Вы уверены, что хотите заархивировать все текущие завершенные заказы? После этого они не будут учитываться в текущей статистике.')) {
             return;
         }
 
@@ -174,7 +189,7 @@
         error = null;
         try {
             const response = await fetch('/api/admin/statistics/archive-old', {
-                method: 'POST', // Use POST for data modification
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -182,19 +197,18 @@
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || `Archiving error: ${response.statusText}`);
+                throw new Error(errorData.error || `Ошибка архивирования: ${response.statusText}`);
             }
 
             const result = await response.json();
-            alert(result.message); // Show success message
+            alert(result.message);
 
-            // After successful archiving, reload statistics to reflect the "reset"
             await fetchData();
 
         } catch (e) {
-            console.error('Error during archiving:', e);
+            console.error('Ошибка при архивировании:', e);
             error = e.message;
-            alert(`Failed to archive statistics: ${e.message}`);
+            alert(`Не удалось заархивировать статистику: ${e.message}`);
         } finally {
             isLoading = false;
         }
@@ -202,8 +216,211 @@
 </script>
 
 <style>
-    /* Все ваши стили остаются без изменений */
-    /* ... (ваш существующий блок <style>) ... */
+    /* Общие стили для страницы */
+    .statistics-page {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        padding: 20px;
+        max-width: 1200px;
+        margin: 40px auto;
+        background-color: #f9f9f9;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        color: #333;
+    }
+
+    h1 {
+        text-align: center;
+        color: #2c3e50;
+        margin-bottom: 30px;
+        font-size: 2.5em;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+    }
+
+    h2 {
+        color: #34495e;
+        margin-top: 50px;
+        margin-bottom: 25px;
+        font-size: 1.8em;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 10px;
+    }
+
+    /* Стиль для сообщений о загрузке/ошибке */
+    .loading-message, .error-message {
+        text-align: center;
+        font-size: 1.2em;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px auto;
+        max-width: 500px;
+    }
+
+    .loading-message {
+        background-color: #e3f2fd;
+        color: #1976d2;
+    }
+
+    .error-message {
+        background-color: #ffebee;
+        color: #d32f2f;
+        border: 1px solid #ef9a9a;
+    }
+
+    /* KPI Cards (карточки с ключевыми показателями) */
+    .kpi-cards {
+        display: flex;
+        justify-content: space-around;
+        gap: 20px;
+        margin-bottom: 40px;
+        flex-wrap: wrap; /* Для адаптивности */
+    }
+
+    .kpi-card {
+        background-color: #ffffff;
+        padding: 25px 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        text-align: center;
+        flex: 1;
+        min-width: 280px; /* Минимальная ширина карточки */
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+
+    .kpi-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .kpi-card h3 {
+        color: #555;
+        font-size: 1.1em;
+        margin-bottom: 10px;
+    }
+
+    .kpi-card p {
+        font-size: 2.2em;
+        font-weight: bold;
+        color: #4CAF50; /* Зеленый для показателей */
+        margin: 0;
+    }
+
+    /* Контейнер для графиков */
+    .charts-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 30px;
+        margin-bottom: 40px;
+    }
+
+    .chart-card {
+        background-color: #ffffff;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        flex: 1;
+        min-width: calc(50% - 15px); /* Для двух колонок с учетом gap */
+        height: 450px; /* ЭТО КРИТИЧЕСКИ ВАЖНО для отображения canvas! */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative; /* Важно для дочернего canvas */
+    }
+
+    /* Добавьте эти стили для canvas, если их нет, чтобы он заполнил родителя */
+    canvas {
+        max-width: 100%;
+        max-height: 100%;
+        width: 100% !important; /* Важно: !important может быть нужен для переопределения */
+        height: 100% !important; /* Важно: !important может быть нужен для переопределения */
+    }
+
+    /* Кнопка архивирования */
+    .archive-button-container {
+        text-align: center;
+        margin-top: 50px;
+        margin-bottom: 60px;
+        padding: 20px;
+        background-color: #fffde7; /* Светло-желтый фон для предупреждения */
+        border-left: 5px solid #ffeb3b;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+
+    .archive-button {
+        background-color: #ff5722; /* Оранжевый цвет для кнопки действия */
+        color: white;
+        padding: 12px 25px;
+        border: none;
+        border-radius: 6px;
+        font-size: 1.1em;
+        cursor: pointer;
+        transition: background-color 0.3s ease, transform 0.1s ease;
+        margin-bottom: 15px;
+    }
+
+    .archive-button:hover {
+        background-color: #e64a19;
+        transform: translateY(-2px);
+    }
+
+    .archive-button:active {
+        transform: translateY(0);
+    }
+
+    .archive-button-description {
+        color: #777;
+        font-size: 0.9em;
+        line-height: 1.5;
+        max-width: 700px;
+        margin: 0 auto;
+    }
+
+    /* Таблицы данных */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        background-color: #ffffff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+        overflow: hidden; /* Для border-radius */
+    }
+
+    .data-table th, .data-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+
+    .data-table th {
+        background-color: #f2f2f2;
+        color: #555;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.9em;
+    }
+
+    .data-table tbody tr:nth-child(even) {
+        background-color: #fdfdfd;
+    }
+
+    .data-table tbody tr:hover {
+        background-color: #f0f0f0;
+        cursor: pointer;
+    }
+
+    /* Адаптивность для меньших экранов */
+    @media (max-width: 768px) {
+        .kpi-cards, .charts-container {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .kpi-card, .chart-card {
+            min-width: 90%;
+        }
+    }
 </style>
 
 <div class="statistics-page">
