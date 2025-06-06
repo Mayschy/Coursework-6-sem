@@ -92,8 +92,11 @@
             justify-content: center;
             gap: 0.8rem;
         }
-        .login-btn, .logout-btn {
-            margin-right: 50px;
+        .login-btn {
+            margin-left: 50px;
+        }
+        .cart-link {
+         margin-right: 50px;
         }
     }
 </style>
