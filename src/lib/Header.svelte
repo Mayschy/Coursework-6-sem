@@ -93,10 +93,10 @@
             gap: 0.8rem;
         }
         .login-btn {
-            margin-left: 50px;
+            margin-left: 100px;
         }
         .cart-link {
-         margin-right: 50px;
+         margin-right: 100px;
         }
     }
 </style>
