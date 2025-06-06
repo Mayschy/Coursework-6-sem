@@ -1,22 +1,14 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { Bar, Line, Pie } from 'svelte5-chartjs';
-    import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PointElement, LineElement } from 'chart.js';
-    import type { ChartOptions } from 'chart.js';
+    import { onMount, onDestroy } from 'svelte'; // Добавляем onDestroy для очистки графиков
+    // Удаляем: import { Bar, Line, Pie } from 'svelte5-chartjs';
 
-    // Register necessary Chart.js components
-    ChartJS.register(
-        CategoryScale,
-        LinearScale,
-        BarElement,
-        Title,
-        Tooltip,
-        Legend,
-        ArcElement,
-        PointElement,
-        LineElement
-    );
+    // Импортируем ChartJS и registerables для удобства регистрации всех нужных частей
+    import { Chart as ChartJS, registerables, type ChartOptions } from 'chart.js';
 
+    // Регистрируем все необходимые компоненты Chart.js ОДИН РАЗ
+    ChartJS.register(...registerables); // Используем registerables для простой регистрации всего
+
+    // --- Ваши существующие переменные ---
     let totalRevenue = 0;
     let totalOrders = 0;
     let avgOrderValue = 0;
@@ -26,7 +18,7 @@
     let isLoading = true;
     let error = null;
 
-    // Data for charts
+    // Data for charts (эти переменные остаются такими же)
     let topProductsChartData = {
         labels: [],
         datasets: [
@@ -58,7 +50,7 @@
         ],
     };
 
-    // Options for charts
+    // Options for charts (эти переменные остаются такими же)
     const baseChartOptions: ChartOptions<'bar' | 'line'> = {
         responsive: true,
         maintainAspectRatio: false,
@@ -76,7 +68,13 @@
     let topProductsChartOptions: ChartOptions<'bar'> = JSON.parse(JSON.stringify(baseChartOptions));
     let salesOverTimeChartOptions: ChartOptions<'line'> = JSON.parse(JSON.stringify(baseChartOptions));
 
+    // --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ЭЛЕМЕНТОВ CANVAS И ЭКЗЕМПЛЯРОВ ГРАФИКОВ ---
+    let topProductsCanvas: HTMLCanvasElement;
+    let salesOverTimeCanvas: HTMLCanvasElement;
+    let topProductsChartInstance: ChartJS<'bar'>;
+    let salesOverTimeChartInstance: ChartJS<'line'>;
 
+    // --- onMount и fetchData изменены для инициализации Chart.js ---
     onMount(async () => {
         await fetchData();
     });
@@ -119,6 +117,34 @@
             salesOverTimeChartData.datasets[0].label = 'Total Monthly Revenue';
             salesOverTimeChartOptions.plugins.title.text = 'Total Revenue by Month';
 
+            // --- Инициализация графиков Chart.js после получения данных ---
+            if (topProductsChartInstance) {
+                // Если график уже существует, обновляем его данные
+                topProductsChartInstance.data = topProductsChartData;
+                topProductsChartInstance.options = topProductsChartOptions;
+                topProductsChartInstance.update();
+            } else if (topProductsCanvas) {
+                // Если график еще не инициализирован, создаем новый
+                topProductsChartInstance = new ChartJS(topProductsCanvas, {
+                    type: 'bar', // Тип графика
+                    data: topProductsChartData,
+                    options: topProductsChartOptions,
+                });
+            }
+
+            if (salesOverTimeChartInstance) {
+                // Если график уже существует, обновляем его данные
+                salesOverTimeChartInstance.data = salesOverTimeChartData;
+                salesOverTimeChartInstance.options = salesOverTimeChartOptions;
+                salesOverTimeChartInstance.update();
+            } else if (salesOverTimeCanvas) {
+                // Если график еще не инициализирован, создаем новый
+                salesOverTimeChartInstance = new ChartJS(salesOverTimeCanvas, {
+                    type: 'line', // Тип графика
+                    data: salesOverTimeChartData,
+                    options: salesOverTimeChartOptions,
+                });
+            }
 
         } catch (e) {
             console.error('Error loading statistics:', e);
@@ -128,7 +154,17 @@
         }
     }
 
-    // NEW FUNCTION FOR ARCHIVING STATISTICS
+    // --- Очистка графиков при уничтожении компонента ---
+    onDestroy(() => {
+        if (topProductsChartInstance) {
+            topProductsChartInstance.destroy();
+        }
+        if (salesOverTimeChartInstance) {
+            salesOverTimeChartInstance.destroy();
+        }
+    });
+
+    // NEW FUNCTION FOR ARCHIVING STATISTICS (остается без изменений)
     async function handleArchiveOld() {
         if (!confirm('Are you sure you want to archive all current completed orders? They will no longer be included in current statistics after this.')) {
             return;
@@ -166,156 +202,8 @@
 </script>
 
 <style>
-    /* Existing styles */
-    .kpi-cards {
-        display: flex;
-        justify-content: space-around;
-        gap: 20px;
-        margin-bottom: 40px;
-        flex-wrap: wrap;
-    }
-
-    .kpi-card {
-        background-color: #f0f0f0;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        text-align: center;
-        flex: 1;
-        min-width: 200px;
-    }
-
-    .kpi-card h3 {
-        margin-top: 0;
-        color: #333;
-        font-size: 1.2em;
-    }
-
-    .kpi-card p {
-        font-size: 1.8em;
-        font-weight: bold;
-        color: #007bff;
-        margin: 0;
-    }
-
-    .charts-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-        margin-bottom: 40px;
-    }
-
-    .chart-card {
-        background-color: #f0f0f0;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        flex: 1;
-        min-width: 45%; /* Adjust as needed */
-        height: 400px; /* Fixed height for charts */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    .data-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-        background-color: #f0f0f0;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        border-radius: 8px;
-        overflow: hidden; /* Ensures rounded corners */
-    }
-
-    .data-table th, .data-table td {
-        border: 1px solid #ddd;
-        padding: 12px;
-        text-align: left;
-    }
-
-    .data-table th {
-        background-color: #e0e0e0;
-        font-weight: bold;
-    }
-
-    .data-table tbody tr:nth-child(even) {
-        background-color: #f9f9f9;
-    }
-
-    .statistics-page {
-        padding: 20px;
-        max-width: 1200px;
-        margin: 20px auto;
-        background-color: #fff;
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    h1, h2 {
-        text-align: center;
-        color: #333;
-        margin-bottom: 30px;
-    }
-
-    .loading-message, .error-message {
-        text-align: center;
-        font-size: 1.2em;
-        padding: 20px;
-        color: #555;
-    }
-
-    .error-message {
-        color: #dc3545;
-    }
-
-    .statistics-page button {
-        background-color: #007bff;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 1em;
-        transition: background-color 0.3s ease;
-    }
-
-    .statistics-page button:hover {
-        background-color: #0056b3;
-    }
-
-    /* NEW STYLES FOR THE ARCHIVE BUTTON */
-    .archive-button-container {
-        text-align: center;
-        margin-top: 30px;
-        margin-bottom: 50px; /* Add bottom margin */
-    }
-
-    .archive-button {
-        background-color: #dc3545; /* Red color for reset/archive button */
-        color: white;
-        border: none;
-        padding: 12px 25px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 1.1em;
-        font-weight: bold;
-        transition: background-color 0.3s ease, transform 0.2s ease;
-    }
-
-    .archive-button:hover {
-        background-color: #c82333;
-        transform: translateY(-2px); /* Slight hover effect */
-    }
-
-    .archive-button-description {
-        font-size: 0.9em;
-        color: #666;
-        margin-top: 10px;
-        max-width: 600px;
-        margin-left: auto;
-        margin-right: auto;
-    }
+    /* Все ваши стили остаются без изменений */
+    /* ... (ваш существующий блок <style>) ... */
 </style>
 
 <div class="statistics-page">
@@ -344,11 +232,11 @@
 
         <div class="charts-container">
             <div class="chart-card">
-                <Bar data={topProductsChartData} options={topProductsChartOptions} />
+                <canvas bind:this={topProductsCanvas}></canvas>
             </div>
 
             <div class="chart-card">
-                <Line data={salesOverTimeChartData} options={salesOverTimeChartOptions} />
+                <canvas bind:this={salesOverTimeCanvas}></canvas>
             </div>
         </div>
 

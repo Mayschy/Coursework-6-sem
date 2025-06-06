@@ -2,8 +2,8 @@
 import { json } from '@sveltejs/kit';
 import { connectDB } from '$lib/server/db.js';
 
-export async function POST({ locals }) { // Используем POST, так как это действие изменяет данные
-    // Проверка прав администратора
+export async function POST({ locals }) { 
+
     if (!locals.user || locals.user.role !== 'admin') {
         return json({ error: 'Access denied. Administrator rights required.' }, { status: 403 });
     }
