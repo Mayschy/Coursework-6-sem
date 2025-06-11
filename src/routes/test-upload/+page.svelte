@@ -2,10 +2,10 @@
     import { onMount } from 'svelte';
     import { invalidateAll } from '$app/navigation';
 
-    // --- Variables for adding/editing painting (consolidated) ---
-    let showFormModal = false; // Controls visibility of the main form modal (add/edit)
-    let isEditing = false; // True if we are editing, false if adding new
-    let currentPaintingId = null; // ID of the painting being edited
+
+    let showFormModal = false; 
+    let isEditing = false; 
+    let currentPaintingId = null; 
 
     let title = '';
     let description = '';
@@ -14,26 +14,26 @@
     let previewImageFile = null;
     let hoverPreviewImageFile = null;
     let detailImageFiles = [];
-    let saleFile = null; // Changed from saleFileUrl to File object
+    let saleFile = null; 
 
-    let formError = ''; // Error message for the add/edit form
-    let formSuccess = ''; // Success message for the add/edit form
-    let isSubmitting = false; // Loading state for form submission
+    let formError = ''; 
+    let formSuccess = ''; 
+    let isSubmitting = false; 
 
-    // Local URLs for previewing images before upload
+
     let localPreviewImageUrl = '';
     let localHoverPreviewImageUrl = '';
     let localDetailImageUrls = [];
-    // No local URL for saleFile as it's not an image for direct preview
+   
 
-    // Existing Cloudinary URLs for images when editing
+
     let existingPreviewImageUrl = '';
     let existingHoverPreviewImageUrl = '';
     let existingDetailImageUrls = [];
-    let existingSaleFileUrl = ''; // To store the existing Dropbox URL when editing
+    let existingSaleFileUrl = ''; 
 
 
-    // --- Variables for managing painting list and deletion ---
+
     let paintings = [];
     let isFetchingPaintings = true;
     let deleteError = '';
@@ -70,7 +70,6 @@
         existingDetailImageUrls = existingDetailImageUrls.filter(url => url !== urlToRemove);
     }
 
-    // --- NEW: Function to handle file input change for sale file ---
     function handleSaleFileChange(event) {
         const target = event.target;
         if (target instanceof HTMLInputElement && target.files && target.files.length > 0) {
@@ -107,17 +106,15 @@
         }
     }
 
-    // --- NEW: Function to upload sale file to Dropbox ---
     async function uploadFileToDropbox(file) {
         if (!file) return null;
 
         const formData = new FormData();
-        formData.append('file', file); // 'file' - это имя, которое ожидает бэкенд
-        // Опционально, можно передать путь или папку
-        // formData.append('path', 'some_specific_folder'); 
+        formData.append('file', file);
+ 
 
         try {
-            const res = await fetch('/api/upload-dropbox', { // Новый API-маршрут
+            const res = await fetch('/api/upload-dropbox', { 
                 method: 'POST',
                 body: formData
             });
@@ -148,10 +145,10 @@
         let uploadedPreviewUrl = existingPreviewImageUrl;
         let uploadedHoverPreviewUrl = existingHoverPreviewImageUrl;
         let uploadedDetailImageUrls = [...existingDetailImageUrls];
-        let uploadedSaleFileUrl = existingSaleFileUrl; // Initialize with existing URL
+        let uploadedSaleFileUrl = existingSaleFileUrl; 
 
         try {
-            // Upload main preview image
+ 
             if (previewImageFile) {
                 uploadedPreviewUrl = await uploadFileToCloudinary(previewImageFile, 'artstore_previews');
                 if (!uploadedPreviewUrl) {
@@ -165,7 +162,7 @@
             }
 
 
-            // Upload hover preview image
+         
             if (hoverPreviewImageFile) {
                 uploadedHoverPreviewUrl = await uploadFileToCloudinary(hoverPreviewImageFile, 'artstore_hover_previews');
                 if (!uploadedHoverPreviewUrl) {
@@ -175,7 +172,7 @@
             }
 
 
-            // Upload detail images
+       
             for (const file of detailImageFiles) {
                 const url = await uploadFileToCloudinary(file, 'artstore_details');
                 if (url) {
@@ -186,20 +183,20 @@
                 }
             }
 
-            // --- NEW: Upload sale file to Dropbox ---
+      
             if (saleFile) {
                 uploadedSaleFileUrl = await uploadFileToDropbox(saleFile);
                 if (!uploadedSaleFileUrl) {
                     isSubmitting = false;
                     return;
                 }
-            } else if (!existingSaleFileUrl && !isEditing) { // Check if required for new additions
+            } else if (!existingSaleFileUrl && !isEditing) { 
                 formError = 'Please select a sale file.';
                 isSubmitting = false;
                 return;
             }
 
-            // Validation after all uploads (if images or files are conditionally required)
+            
             if (!uploadedPreviewUrl) {
                 formError = 'Main preview is required.';
                 isSubmitting = false;
@@ -230,7 +227,7 @@
                 previewImage: uploadedPreviewUrl,
                 hoverPreviewImage: uploadedHoverPreviewUrl,
                 detailImages: uploadedDetailImageUrls,
-                saleFileUrl: uploadedSaleFileUrl, // Use the URL from Dropbox
+                saleFileUrl: uploadedSaleFileUrl, 
             };
 
             let res;
@@ -278,7 +275,7 @@
         previewImageFile = null;
         hoverPreviewImageFile = null;
         detailImageFiles = [];
-        saleFile = null; // Reset saleFile to null
+        saleFile = null; 
         formError = '';
         formSuccess = '';
         isSubmitting = false;
@@ -288,7 +285,7 @@
         existingPreviewImageUrl = '';
         existingHoverPreviewImageUrl = '';
         existingDetailImageUrls = [];
-        existingSaleFileUrl = ''; // Reset existingSaleFileUrl
+        existingSaleFileUrl = ''; 
         isEditing = false;
         currentPaintingId = null;
     }
@@ -376,7 +373,7 @@
         description = painting.description || '';
         price = painting.price.toString();
         dimensions = painting.dimensions;
-        existingSaleFileUrl = painting.saleFileUrl || ''; // Load existing Dropbox URL
+        existingSaleFileUrl = painting.saleFileUrl || ''; 
 
         existingPreviewImageUrl = painting.previewImage || '';
         existingHoverPreviewImageUrl = painting.hoverPreviewImage || '';
@@ -482,7 +479,7 @@
     .modal-content form input[type="text"],
     .modal-content form input[type="number"],
     .modal-content form textarea,
-    .modal-content form input[type="url"] { /* Keep url type for existing saleFileUrl display */
+    .modal-content form input[type="url"] { 
         width: calc(100% - 20px);
         padding: 8px;
         border: 1px solid #ccc;

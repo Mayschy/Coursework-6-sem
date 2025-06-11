@@ -114,11 +114,6 @@
             showVerificationForm = false;
             verificationCode = '';
             currentOrderId = null;
-            
-            // Опционально: очищаем корзину после успешной верификации
-            // cartItems = []; 
-            
-            // Перенаправляем на главную страницу
             goto('/'); 
 
         } catch (e) {

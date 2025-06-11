@@ -1,24 +1,24 @@
-// jsconfig.json
+
 {
   "extends": "./.svelte-kit/tsconfig.json",
   "compilerOptions": {
-    // Удаляем "baseUrl" и "paths", так как ими управляет SvelteKit.
-    // Если вам нужны другие пользовательские алиасы, их нужно добавлять в svelte.config.js (kit.alias).
+    
+    
     "module": "esnext",
     "target": "esnext",
     "moduleResolution": "node",
     "allowJs": true,
     "checkJs": true,
-    "skipLibCheck": true // Эту строку оставляем для решения проблемы с Chart.js
+    "skipLibCheck": true 
   },
   "include": [
-    "src/**/*.d.ts",
-    "src/**/*.js",
-    "src/**/*.ts",
-    "src/**/*.svelte",
-    // Эти строки должны быть здесь, они указывают на сгенерированные SvelteKit типы
-    "./.svelte-kit/types/**/*.d.ts",
-    "./.svelte-kit/types/src/env/**/*.d.ts"
+    "src*.d.ts",
+    "src*.js",
+    "src*.ts",
+    "src*.svelte",
+    
+    "./.svelte-kit/types*.d.ts",
+    "./.svelte-kit/types/src/env*.d.ts"
   ],
   "exclude": ["node_modules", ".svelte-kit", "build"]
 }

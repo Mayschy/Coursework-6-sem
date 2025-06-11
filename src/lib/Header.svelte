@@ -23,9 +23,7 @@
 </script>
 
 <style>
-    /* ... (ваши стили остаются прежними) ... */
-
-    .login-btn, .logout-btn {
+      .login-btn, .logout-btn {
         background-color: #8d9278;
         color: white;
         border: none;

@@ -2,10 +2,8 @@
     import { onMount, onDestroy, afterUpdate } from 'svelte';
     import { Chart as ChartJS, registerables } from 'chart.js';
 
-    // Регистрируем все необходимые компоненты Chart.js ОДИН РАЗ
     ChartJS.register(...registerables);
 
-    // --- Ваши существующие переменные ---
     let totalRevenue = 0;
     let totalOrders = 0;
     let avgOrderValue = 0;
@@ -15,7 +13,6 @@
     let isLoading = true;
     let error = null;
 
-    // Data for charts
     let topProductsChartData = {
         labels: [],
         datasets: [
@@ -47,7 +44,6 @@
         ],
     };
 
-    // Options for charts
     const baseChartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -65,13 +61,10 @@
     let topProductsChartOptions = JSON.parse(JSON.stringify(baseChartOptions));
     let salesOverTimeChartOptions = JSON.parse(JSON.stringify(baseChartOptions));
 
-    // --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ЭЛЕМЕНТОВ CANVAS И ЭКЗЕМПЛЯРОВ ГРАФИКОВ ---
     let topProductsCanvas;
     let salesOverTimeCanvas;
     let topProductsChartInstance = null;
     let salesOverTimeChartInstance = null;
-
-    // --- onMount и fetchData изменены для инициализации Chart.js ---
     onMount(async () => {
         console.log("onMount: Component mounted. Starting data fetch.");
         await fetchData();
@@ -125,14 +118,12 @@
         }
     }
 
-    // --- Используем afterUpdate для инициализации/обновления графиков ---
     afterUpdate(() => {
         console.log("afterUpdate: Running chart initialization/update logic.");
 
         if (!isLoading && !error && topProductsCanvas && salesOverTimeCanvas) {
             console.log("afterUpdate: Data loaded and canvases available.");
 
-            // Топ-продукты (гистограмма)
             if (topProductsChartInstance) {
                 console.log("afterUpdate: Updating existing Top Products chart.");
                 topProductsChartInstance.data = topProductsChartData;
@@ -147,7 +138,6 @@
                 });
             }
 
-            // Продажи по времени (линейный график)
             if (salesOverTimeChartInstance) {
                 console.log("afterUpdate: Updating existing Sales Over Time chart.");
                 salesOverTimeChartInstance.data = salesOverTimeChartData;
@@ -166,7 +156,6 @@
         }
     });
 
-    // --- Очистка графиков при уничтожении компонента ---
     onDestroy(() => {
         console.log("onDestroy: Destroying chart instances.");
         if (topProductsChartInstance) {
@@ -179,7 +168,6 @@
         }
     });
 
-    // NEW FUNCTION FOR ARCHIVING STATISTICS
     async function handleArchiveOld() {
         if (!confirm('Вы уверены, что хотите заархивировать все текущие завершенные заказы? После этого они не будут учитываться в текущей статистике.')) {
             return;
@@ -216,7 +204,6 @@
 </script>
 
 <style>
-    /* Общие стили для страницы */
     .statistics-page {
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         padding: 20px;
@@ -246,7 +233,6 @@
         padding-bottom: 10px;
     }
 
-    /* Стиль для сообщений о загрузке/ошибке */
     .loading-message, .error-message {
         text-align: center;
         font-size: 1.2em;
@@ -267,13 +253,12 @@
         border: 1px solid #ef9a9a;
     }
 
-    /* KPI Cards (карточки с ключевыми показателями) */
     .kpi-cards {
         display: flex;
         justify-content: space-around;
         gap: 20px;
         margin-bottom: 40px;
-        flex-wrap: wrap; /* Для адаптивности */
+        flex-wrap: wrap; 
     }
 
     .kpi-card {
@@ -283,7 +268,7 @@
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
         text-align: center;
         flex: 1;
-        min-width: 280px; /* Минимальная ширина карточки */
+        min-width: 280px; 
         transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     }
 
@@ -301,11 +286,11 @@
     .kpi-card p {
         font-size: 2.2em;
         font-weight: bold;
-        color: #4CAF50; /* Зеленый для показателей */
+        color: #4CAF50; 
         margin: 0;
     }
 
-    /* Контейнер для графиков */
+
     .charts-container {
         display: flex;
         flex-wrap: wrap;
@@ -319,36 +304,36 @@
         border-radius: 10px;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
         flex: 1;
-        min-width: calc(50% - 15px); /* Для двух колонок с учетом gap */
-        height: 450px; /* ЭТО КРИТИЧЕСКИ ВАЖНО для отображения canvas! */
+        min-width: calc(50% - 15px);
+        height: 450px;
         display: flex;
         justify-content: center;
         align-items: center;
-        position: relative; /* Важно для дочернего canvas */
+        position: relative; 
     }
 
-    /* Добавьте эти стили для canvas, если их нет, чтобы он заполнил родителя */
+
     canvas {
         max-width: 100%;
         max-height: 100%;
-        width: 100% !important; /* Важно: !important может быть нужен для переопределения */
-        height: 100% !important; /* Важно: !important может быть нужен для переопределения */
+        width: 100% !important; 
+        height: 100% !important; 
     }
 
-    /* Кнопка архивирования */
+ 
     .archive-button-container {
         text-align: center;
         margin-top: 50px;
         margin-bottom: 60px;
         padding: 20px;
-        background-color: #fffde7; /* Светло-желтый фон для предупреждения */
+        background-color: #fffde7; 
         border-left: 5px solid #ffeb3b;
         border-radius: 8px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
 
     .archive-button {
-        background-color: #ff5722; /* Оранжевый цвет для кнопки действия */
+        background-color: #ff5722;
         color: white;
         padding: 12px 25px;
         border: none;
@@ -376,7 +361,7 @@
         margin: 0 auto;
     }
 
-    /* Таблицы данных */
+
     .data-table {
         width: 100%;
         border-collapse: collapse;
@@ -384,7 +369,7 @@
         background-color: #ffffff;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         border-radius: 8px;
-        overflow: hidden; /* Для border-radius */
+        overflow: hidden; 
     }
 
     .data-table th, .data-table td {
@@ -410,7 +395,7 @@
         cursor: pointer;
     }
 
-    /* Адаптивность для меньших экранов */
+
     @media (max-width: 768px) {
         .kpi-cards, .charts-container {
             flex-direction: column;

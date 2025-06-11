@@ -3,7 +3,6 @@ import { json } from '@sveltejs/kit';
 import { connectDB } from '$lib/server/db.js';
 
 export async function GET({ locals }) {
-    // Проверка прав администратора
     if (!locals.user || locals.user.role !== 'admin') {
         return json({ error: 'Access denied. Administrator rights required.' }, { status: 403 });
     }
@@ -12,28 +11,27 @@ export async function GET({ locals }) {
         const db = await connectDB();
         const ordersCollection = db.collection('orders');
 
-        // Агрегация для получения выручки и количества заказов по месяцам
         const salesData = await ordersCollection.aggregate([
-           { $match: { status: 'completed', isArchived: { $ne: true } } }, // Только завершенные заказы
+            { $match: { status: 'completed', isArchived: { $ne: true } } },
             {
                 $group: {
-                    _id: { // Группируем по году и месяцу
+                    _id: {
                         year: { $year: '$orderDate' },
                         month: { $month: '$orderDate' }
                     },
-                    totalRevenue: { $sum: '$totalAmount' }, // Суммируем выручку за этот месяц
-                    totalOrders: { $sum: 1 } // Считаем количество заказов за этот месяц
+                    totalRevenue: { $sum: '$totalAmount' },
+                    totalOrders: { $sum: 1 }
                 }
             },
             {
-                $sort: { // Сортируем по году и месяцу для правильного отображения на графике
+                $sort: {
                     '_id.year': 1,
                     '_id.month': 1
                 }
             },
             {
                 $project: {
-                    _id: { // Форматируем _id для читаемости (например, "1/2023", "2/2023")
+                    _id: {
                         $concat: [
                             { $toString: '$_id.month' },
                             '/',
@@ -49,7 +47,7 @@ export async function GET({ locals }) {
         return json(salesData, { status: 200 });
 
     } catch (error) {
-        console.error('Ошибка при получении данных о продажах по времени:', error);
+        console.error('Error fetching sales over time data:', error);
         return json({ error: 'Failed to fetch sales over time statistics' }, { status: 500 });
     }
 }

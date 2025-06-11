@@ -1,4 +1,4 @@
-/* Общие стили */
+
 body, html {
     margin: 0;
     padding: 0;
@@ -11,7 +11,7 @@ body, html {
     min-height: 100vh;
 }
 
-/* Легкий утонченный шрифт */
+
 h1 {
     font-size: 36px;
     font-weight: 300;
@@ -24,12 +24,12 @@ p {
     margin: 10px 0 30px;
 }
 
-/* Обертка страницы */
+
 .wrapper {
     flex: 1;
 }
 
-/* Навигационное меню */
+
 header {
     text-align: center;
     padding: 20px;
@@ -45,7 +45,7 @@ nav {
     position: relative;
 }
 
-/* Центрируем список */
+
 nav ul {
     display: flex;
     list-style: none;
@@ -58,7 +58,7 @@ nav ul li {
     margin: 0;
 }
 
-/* Стили для кнопок навигации */
+
 nav ul li a {
     text-decoration: none;
     color: black;
@@ -69,7 +69,7 @@ nav ul li a {
     transition: color 0.3s ease-in-out;
 }
 
-/* Подчеркивание при наведении */
+
 nav ul li a::after {
     content: "";
     display: block;
@@ -93,7 +93,7 @@ nav ul li a:hover {
     color: gray;
 }
 
-/* Кнопка логина */
+
 .login-btn {
     font-size: 18px;
     font-weight: 500;
@@ -119,16 +119,16 @@ nav ul li a:hover {
     color: white;
 }
 
-/* Баннер */
+
 .banner {
     position: relative;
     width: 100%;
     height: 450px;
     overflow: hidden;
-    margin-bottom: 20px;  /* Добавляем отступ снизу */
+    margin-bottom: 20px;  
 }
 
-/* Кнопки "влево" и "вправо" */
+
 .banner button {
     position: absolute;
     top: 50%;
@@ -144,48 +144,48 @@ nav ul li a:hover {
 }
 
 .banner button:hover {
-    background: rgba(0, 0, 0, 0.8);  /* Более темный фон при наведении */
+    background: rgba(0, 0, 0, 0.8);  
 }
 
-/* Кнопка "назад" */
+
 .prev {
     left: 10px;
 }
 
-/* Кнопка "вперед" */
+
 .next {
     right: 10px;
 }
 
-/* Слайды двигаются с помощью translateX */
+
 .slider {
     display: flex;
     width: 300%;
-    transition: transform 0.5s ease-in-out; /* Плавный переход */
-    transform: var(--slider-translate); /* Используем переменную */
+    transition: transform 0.5s ease-in-out; 
+    transform: var(--slider-translate); 
   }
   
   .slider img {
-    width: 100vw;  /* Каждое изображение занимает 100% ширины экрана */
-    height: 350px;  /* Высота слайдера */
-    object-fit: cover;  /* Изображения будут обрезаться и масштабироваться */
-    opacity: 0;  /* Все изображения скрыты по умолчанию */
-    transition: opacity 0.5s ease-in-out;  /* Плавная анимация появления */
+    width: 100vw;  
+    height: 350px;  
+    object-fit: cover;  
+    opacity: 0;  
+    transition: opacity 0.5s ease-in-out;  
   }
   
-  /* Отображение активного слайда */
+  
   .slider img.active {
-    opacity: 1;  /* Активное изображение будет видимым */
+    opacity: 1;  
   }
   
   
 
-/* Основной контент */
+
 main {
     padding: 50px 20px;
 }
 
-/* Подвал */
+
 footer {
     background: white;
     color: black;
@@ -194,18 +194,18 @@ footer {
     border-top: 1px solid rgba(0, 0, 0, 0.2);
 }
 
-/* Адаптивность */
+
 @media (max-width: 768px) {
     .banner {
-        height: 250px;  /* Меньшая высота для мобильных устройств */
+        height: 250px;  
     }
 
     .slider img {
-        height: 250px;  /* Уменьшаем высоту изображений для мобильных устройств */
+        height: 250px;  
     }
 
     nav ul {
-        flex-direction: column;  /* Вертикальное расположение ссылок */
+        flex-direction: column;  
         gap: 10px;
     }
 
