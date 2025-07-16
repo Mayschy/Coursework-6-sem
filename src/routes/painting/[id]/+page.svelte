@@ -18,9 +18,9 @@
     // NEW: Image object for the frame
     let frameImage = new Image();
     // !!! IMPORTANT: Update this path to your frame image !!!
-    // If your frame is local (e.g., in static/frames/), use '/frames/11429042.jpg'
+    // If your frame is local (e.g., in static/frames/), use '/frames/11429042.png'
     // If your frame is also on Cloudinary, use the proxy like the paintingImage
-    frameImage.src = '/frames/11429042.jpg'; // Assuming frame is local for now
+    frameImage.src = '/frames/11429042.png'; // Assuming frame is local for now
     // frameImage.crossOrigin = "anonymous"; // No need for local files
     frameImage.onload = () => {
         console.log("Frame image loaded.");
@@ -176,7 +176,7 @@
         frameCtx.drawImage(frameImage, 0, 0, frameCanvas.width, frameCanvas.height);
 
         // --- Calculate where to draw the painting inside the frame ---
-        // These values are based on the analysis of your 11429042.jpg frame (3328x4864)
+        // These values are based on the analysis of your 11429042.png frame (3328x4864)
         // Adjust these if your frame or its inner transparent area changes significantly
         const innerFrameX = 200;
         const innerFrameY = 200;
