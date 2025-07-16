@@ -13,38 +13,56 @@
     let canvasElement; // Reference to the HTML canvas element
     let ctx; // 2D drawing context for canvas
 
-    let paintingImage = new Image(); // Image object for the product painting
     let wallImage = new Image();     // Image object for the uploaded wall
 
-    // Position and size of the painting on the wall
+    // NEW: Image object for the frame
+    let frameImage = new Image();
+    frameImage.src = '/frames/11429042.png'; // !!! IMPORTANT: Update this path to your frame image !!!
+                                                     // Make sure this image is placed in 'static/frames/' directory
+                                                     // e.g., 'static/frames/11429042.jpg'
+    frameImage.onload = () => {
+        console.log("Frame image loaded.");
+        // If painting is already loaded, combine them
+        if (paintingImage.complete) {
+            combinePaintingAndFrame();
+        }
+    };
+    frameImage.onerror = () => console.error("Failed to load frame image. Check path:", frameImage.src);
+
+
+    // NEW: Combined painting (painting inside the frame)
+    let combinedPaintingImage = new Image();
+    let combinedPaintingDataURL = ''; // Store the DataURL of the combined image
+
+    // Original painting image (used to generate the combined image)
+    let paintingImage = new Image();
+    // Load the original painting image when the component mounts or data changes
+    $: {
+        if (data.painting && data.painting.previewImage) {
+            paintingImage.src = data.painting.previewImage;
+            paintingImage.onload = () => {
+                console.log("Product painting image loaded.");
+                // If frame is also loaded, combine them
+                if (frameImage.complete) {
+                    combinePaintingAndFrame();
+                }
+            };
+            paintingImage.onerror = () => console.error("Failed to load product painting image:", data.painting.previewImage);
+        }
+    }
+
+
+    // Position and size of the *combined painting (with frame)* on the wall
     let paintingX = 50; // Initial X-position
     let paintingY = 50; // Initial Y-position
-    let paintingWidth = 200; // Initial width in canvas pixels
-    let paintingHeight; // Will be calculated based on aspect ratio
+    let paintingWidth = 300; // Initial width of the combined image (arbitrary for now, will be scaled)
+    let paintingHeight; // Will be calculated based on combined image aspect ratio
 
     let isDragging = false;
     let startX, startY;
     let offsetX, offsetY;
 
-    // Load the painting image when the component mounts or data changes
-    // This makes sure the painting image is always loaded, even before the modal opens
-    $: {
-        if (data.painting && data.painting.previewImage) {
-            paintingImage.src = data.painting.previewImage;
-            paintingImage.onload = () => {
-                // Calculate initial painting height based on actual image aspect ratio
-                // This is a fallback if dimensions from data.painting.dimensions are not perfect
-                const actualAspectRatio = paintingImage.height / paintingImage.width;
-                if (!paintingHeight) { // Only set if not already set by parsed dimensions
-                    paintingHeight = paintingWidth * actualAspectRatio;
-                }
-                drawCanvas(); // Redraw once painting is loaded
-            };
-            paintingImage.onerror = () => console.error("Failed to load painting image:", data.painting.previewImage);
-        }
-    }
-
-
+    // --- Add to Cart Logic (unchanged) ---
     async function addToCart() {
         errorMessage = '';
         successMessage = '';
@@ -78,16 +96,20 @@
         // Reset state when opening the modal
         uploadedWallImageFile = null;
         wallImage.src = ''; // Clear previous wall image
-        // Reset painting position and size
-        paintingX = 50;
-        paintingY = 50;
-        paintingWidth = 200;
-        // Recalculate paintingHeight based on its *actual* loaded dimensions
-        if (paintingImage.width && paintingImage.height) {
-            paintingHeight = paintingWidth * (paintingImage.height / paintingImage.width);
+        // Reset painting position and size for the *combined* image
+        if (combinedPaintingImage.complete) {
+            paintingWidth = 300; // Reset to an initial size
+            paintingHeight = paintingWidth * (combinedPaintingImage.height / combinedPaintingImage.width);
+            paintingX = 50;
+            paintingY = 50;
         } else {
-            paintingHeight = 200; // Fallback default
+            paintingWidth = 300; // Fallback default
+            paintingHeight = 300;
+            paintingX = 50;
+            paintingY = 50;
         }
+
+
         // Initial draw when modal opens (will be empty or show placeholder)
         // Ensure canvas and ctx are ready before drawing
         requestAnimationFrame(() => { // Use rAF to ensure canvasElement is bound
@@ -102,6 +124,70 @@
         showTryOnModal = false;
         isDragging = false; // Ensure dragging state is reset
     }
+
+    // NEW: Function to combine the painting with the frame
+    function combinePaintingAndFrame() {
+        if (!paintingImage.complete || !frameImage.complete) {
+            console.log("Waiting for painting or frame to load before combining.");
+            return; // Wait for both to be loaded
+        }
+
+        const frameCanvas = document.createElement('canvas');
+        const frameCtx = frameCanvas.getContext('2d');
+
+        // Set frame canvas size to frame image size
+        frameCanvas.width = frameImage.width;
+        frameCanvas.height = frameImage.height;
+
+        // Draw the frame first
+        frameCtx.drawImage(frameImage, 0, 0, frameCanvas.width, frameCanvas.height);
+
+        // --- Calculate where to draw the painting inside the frame ---
+        // These values are based on the analysis of your 11429042.jpg frame
+        const innerFrameX = 200;
+        const innerFrameY = 200;
+        const innerFrameWidth = 2928; // 3328 - 200 - 200
+        const innerFrameHeight = 4464; // 4864 - 200 - 200
+
+        // Calculate aspect ratios
+        const paintingAspectRatio = paintingImage.width / paintingImage.height;
+        const innerFrameAspectRatio = innerFrameWidth / innerFrameHeight;
+
+        let drawWidth, drawHeight, drawX, drawY;
+
+        // Scale painting to fit *within* the inner frame area while maintaining aspect ratio
+        if (paintingAspectRatio > innerFrameAspectRatio) {
+            // Painting is wider than the frame's inner area (relative to height)
+            drawWidth = innerFrameWidth;
+            drawHeight = innerFrameWidth / paintingAspectRatio;
+        } else {
+            // Painting is taller than the frame's inner area (relative to width)
+            drawHeight = innerFrameHeight;
+            drawWidth = innerFrameHeight * paintingAspectRatio;
+        }
+
+        // Center the painting within the inner frame area
+        drawX = innerFrameX + (innerFrameWidth - drawWidth) / 2;
+        drawY = innerFrameY + (innerFrameHeight - drawHeight) / 2;
+
+        // Draw the painting over the frame
+        frameCtx.drawImage(paintingImage, drawX, drawY, drawWidth, drawHeight);
+
+        // Convert the combined image on the temporary canvas to a DataURL
+        combinedPaintingDataURL = frameCanvas.toDataURL('image/png');
+        combinedPaintingImage.src = combinedPaintingDataURL;
+        combinedPaintingImage.onload = () => {
+            console.log("Combined painting and frame. Ready for wall.");
+            // Recalculate initial paintingHeight based on combined image
+            paintingHeight = paintingWidth * (combinedPaintingImage.height / combinedPaintingImage.width);
+            drawCanvas(); // Redraw main canvas if modal is open
+        };
+        combinedPaintingImage.onerror = () => console.error("Failed to create combined painting image.");
+
+        // Clean up temporary canvas
+        frameCanvas.remove();
+    }
+
 
     function handleWallImageUpload(event) {
         const file = event.target.files[0];
@@ -143,7 +229,7 @@
     }
 
     function drawCanvas() {
-        if (!ctx) { // Initialize context if not already done (should be from openTryOnModal)
+        if (!ctx) {
             console.warn("Canvas context not initialized. This might be a timing issue.");
             return;
         }
@@ -165,9 +251,9 @@
             ctx.fillText('Upload your wall photo', canvasElement.width / 2, canvasElement.height / 2);
         }
 
-        // 2. Draw the painting *on top* of the wall image
-        if (paintingImage.src && paintingImage.complete && paintingHeight !== undefined) {
-            ctx.drawImage(paintingImage, paintingX, paintingY, paintingWidth, paintingHeight);
+        // 2. Draw the *combined* painting (with frame) *on top* of the wall image
+        if (combinedPaintingImage.src && combinedPaintingImage.complete && paintingHeight !== undefined) {
+            ctx.drawImage(combinedPaintingImage, paintingX, paintingY, paintingWidth, paintingHeight);
         }
     }
 
@@ -184,8 +270,8 @@
     }
 
     function handleMouseDown(event) {
-        // Only allow dragging if wall image is present and painting is loaded
-        if (!wallImage.src || !paintingImage.src || paintingHeight === undefined) return;
+        // Only allow dragging if wall image is present and combined painting is loaded
+        if (!wallImage.src || !combinedPaintingImage.src || paintingHeight === undefined) return;
         event.preventDefault(); // Prevent default browser drag behavior
 
         const mousePos = getMousePos(canvasElement, event);
@@ -219,7 +305,7 @@
 
     // Logic for resizing with mouse wheel (scaling)
     function handleMouseWheel(event) {
-        if (!wallImage.src || !paintingImage.src || paintingHeight === undefined) return;
+        if (!wallImage.src || !combinedPaintingImage.src || paintingHeight === undefined) return;
         event.preventDefault(); // Prevent page scrolling
 
         const scaleFactor = 1.1; // Scale coefficient
@@ -236,11 +322,11 @@
                 newWidth = paintingWidth / scaleFactor;
             }
 
-            // Limit min/max size based on canvas size
-            newWidth = Math.max(paintingImage.width * 0.1, Math.min(newWidth, canvasElement.width * 0.9)); // Ensure painting is not too small/big
+            // Limit min/max size based on canvas size and combined painting's natural size
+            newWidth = Math.max(combinedPaintingImage.width * 0.1, Math.min(newWidth, canvasElement.width * 1.5)); // Allow larger than canvas for detailed view if needed
 
             // Maintain aspect ratio
-            const currentAspectRatio = paintingImage.height / paintingImage.width;
+            const currentAspectRatio = combinedPaintingImage.height / combinedPaintingImage.width;
             newHeight = newWidth * currentAspectRatio;
 
             // Center scaling relative to the cursor position
@@ -253,27 +339,37 @@
         }
     }
 
-    // Save the image
+    // Save the image (Improved for reliability)
     function savePreviewImage() {
         if (!canvasElement || !wallImage.src || !wallImage.complete) {
             alert('Please upload a wall photo first and place the painting!');
             return;
         }
-        // Ensure paintingImage is also loaded
-        if (!paintingImage.src || !paintingImage.complete || paintingHeight === undefined) {
-             alert('Painting image not fully loaded. Please wait and try again!');
+        if (!combinedPaintingImage.src || !combinedPaintingImage.complete || paintingHeight === undefined) {
+             alert('Painting with frame not fully loaded. Please wait and try again!');
             return;
         }
 
-        const dataURL = canvasElement.toDataURL('image/png'); // Using PNG for better quality with transparent backgrounds if needed
-        const link = document.createElement('a');
-        // Sanitize filename to remove special characters
-        const sanitizedTitle = data.painting.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        link.download = `preview_${sanitizedTitle}.png`;
-        link.href = dataURL;
-        document.body.appendChild(link); // Append to body is good practice for cross-browser compatibility
-        link.click();
-        document.body.removeChild(link); // Clean up the element
+        try {
+            // Using a small timeout to ensure the canvas is fully rendered and
+            // to allow the browser to process UI updates before initiating download.
+            // This can sometimes bypass download blocking in certain browsers.
+            setTimeout(() => {
+                const dataURL = canvasElement.toDataURL('image/png');
+                const link = document.createElement('a');
+                const sanitizedTitle = data.painting.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                link.download = `preview_${sanitizedTitle}_framed.png`;
+                link.href = dataURL;
+
+                // Programmatically click the link
+                document.body.appendChild(link); // Temporarily append to body
+                link.click();
+                document.body.removeChild(link); // Clean up
+            }, 50); // Small delay, e.g., 50ms
+        } catch (e) {
+            console.error("Error saving image:", e);
+            alert("Could not save image. Please check console for details.");
+        }
     }
 
 </script>
@@ -497,7 +593,7 @@
     .detail-images-gallery {
         margin-top: 2rem;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minminmax(150px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 1rem;
     }
 
@@ -555,7 +651,7 @@
     <div class="modal-overlay" on:click={closeTryOnModal}>
         <div class="modal-content try-on-modal-content" on:click|stopPropagation>
             <h3>Try Painting on Your Wall</h3>
-            <p>Upload your wall photo, then drag and resize the painting.</p>
+            <p>Upload your wall photo, then drag and resize the framed painting.</p>
             <input type="file" accept="image/*" on:change={handleWallImageUpload} />
 
             <div class="try-on-canvas-container">
