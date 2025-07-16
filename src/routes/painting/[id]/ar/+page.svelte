@@ -227,42 +227,61 @@
         }
 
         try {
-            currentStatus = "Requesting AR session...";
-            xrSession = await navigator.xr.requestSession('immersive-ar', {
-                requiredFeatures: ['hit-test', 'dom-overlay'], // dom-overlay needed for UI buttons over AR
-                optionalFeatures: ['light-estimation'], // For better realism
-                 domOverlay: { root: document.querySelector('.ar-ui-overlay') } // IMPORTANT: Link your UI overlay
-            });
+        currentStatus = "Requesting AR session...";
+        xrSession = await navigator.xr.requestSession('immersive-ar', {
+            requiredFeatures: ['hit-test', 'dom-overlay'],
+            optionalFeatures: ['light-estimation'],
+            domOverlay: { root: document.querySelector('.ar-ui-overlay') }
+        });
 
-            renderer.xr.setSession(xrSession);
-            xrSession.addEventListener('end', onSessionEnd);
+        renderer.xr.setSession(xrSession);
+        xrSession.addEventListener('end', onSessionEnd);
 
-            currentStatus = "Detecting surfaces...";
+        currentStatus = "Detecting surfaces...";
 
-            // Request a reference space for tracking
-            const referenceSpace = await xrSession.requestReferenceSpace('local-floor'); // Or 'viewer' for simpler setup
-            // Corrected: hitTestSource needs to be created on the session, not global 'session' variable
-            hitTestSource = await xrSession.requestHitTestSource({ space: referenceSpace });
+        let selectedReferenceSpaceType = null;
+        const potentialReferenceSpaces = ['local-floor', 'local', 'viewer']; // Попробуем эти в таком порядке
 
-
-            // Start the AR frame loop
-            renderer.setAnimationLoop(onXRFrame);
-
-            // Add touch listener for placing object
-            // Ensure arCanvas is available before adding listener
-            if (arCanvas) {
-                arCanvas.addEventListener('touchstart', onTouchStart);
+        for (const spaceType of potentialReferenceSpaces) {
+            try {
+                // Пытаемся запросить reference space
+                const space = await xrSession.requestReferenceSpace(spaceType);
+                if (space) {
+                    selectedReferenceSpaceType = spaceType;
+                    // hitTestSource = await xrSession.requestHitTestSource({ space: space }); // Это тоже нужно делать с правильным space
+                    break; // Если успешно, выходим из цикла
+                }
+            } catch (innerError) {
+                console.warn(`AR: Reference space type '${spaceType}' not supported. Trying next.`, innerError);
+                // Продолжаем, если текущий тип не поддерживается
             }
-
-
-        } catch (error) {
-            console.error("Error starting WebXR session:", error);
-            alert(`Could not start AR session: ${error.message}. Make sure your device supports AR and try again.`);
-            currentStatus = `AR Session failed: ${error.message}`;
-            isLoading = false;
         }
-    }
 
+        if (!selectedReferenceSpaceType) {
+            // Если ни один из типов reference space не поддерживается
+            throw new Error("No suitable XR reference space found on this device.");
+        }
+
+        const referenceSpace = await xrSession.requestReferenceSpace(selectedReferenceSpaceType);
+        // Теперь создаем hitTestSource с успешно полученным referenceSpace
+        hitTestSource = await xrSession.requestHitTestSource({ space: referenceSpace });
+
+
+        // Start the AR frame loop
+        renderer.setAnimationLoop(onXRFrame);
+
+        // Add touch listener for placing object
+        if (arCanvas) {
+            arCanvas.addEventListener('touchstart', onTouchStart);
+        }
+
+    } catch (error) {
+        console.error("Error starting WebXR session:", error);
+        alert(`Could not start AR session: ${error.message}. Make sure your device supports AR and try again.`);
+        currentStatus = `AR Session failed: ${error.message}`;
+        isLoading = false;
+    }
+}
     function onXRFrame(time, frame) {
         if (!renderer || !scene || !camera || !hitTestSource || !reticle) {
             // If something is not initialized, stop processing frames
