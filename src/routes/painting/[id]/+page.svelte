@@ -118,239 +118,64 @@
         }
     }
 
-    // --- Logic for "Try on Wall" feature ---
-
-    function openTryOnModal() {
+function openTryOnModal() {
         showTryOnModal = true;
-        // Reset state when opening the modal
         wallImageBitmap = null; // Clear previous wall image bitmap
-        // Reset painting position and size for the *combined* image
-        if (combinedPaintingImageBitmap) { // Use combinedPaintingImageBitmap here
-            paintingWidth = 300; // Reset to an initial size
-            paintingHeight = paintingWidth * (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
-            paintingX = 50;
-            paintingY = 50;
-        } else {
-            paintingWidth = 300; // Fallback default
-            paintingHeight = 300;
-            paintingX = 50;
-            paintingY = 50;
-        }
 
-
-        // Initial draw when modal opens (will be empty or show placeholder)
         // Ensure canvas and ctx are ready before drawing
         requestAnimationFrame(() => { // Use rAF to ensure canvasElement is bound
             if (canvasElement) {
                 ctx = canvasElement.getContext('2d');
+
+                // --- NEW LOGIC FOR INITIAL PAINTING SIZE ---
+                // Set initial canvas dimensions
+                const initialCanvasWidth = 800; // A reasonable default width for the modal's canvas
+                const initialCanvasHeight = 500; // A reasonable default height
+
+                canvasElement.width = initialCanvasWidth;
+                canvasElement.height = initialCanvasHeight;
+
+
+                if (combinedPaintingImageBitmap) {
+                    // Calculate a target width for the combined image (e.g., 30-40% of canvas width)
+                    let targetPaintingWidth = initialCanvasWidth * 0.35; // Start at 35% of canvas width
+
+                    // Ensure the initial size is not larger than its natural size (if it's a very small image)
+                    // and also not too large compared to its natural size to avoid huge initial zoom.
+                    targetPaintingWidth = Math.min(targetPaintingWidth, combinedPaintingImageBitmap.width);
+
+                    // Maintain aspect ratio for height
+                    paintingWidth = targetPaintingWidth;
+                    paintingHeight = paintingWidth * (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
+
+                    // Center the painting initially
+                    paintingX = (initialCanvasWidth / 2) - (paintingWidth / 2);
+                    paintingY = (initialCanvasHeight / 2) - (paintingHeight / 2);
+
+                    // Ensure painting fits on screen initially if it somehow becomes too big due to initial calculations
+                    if (paintingHeight > initialCanvasHeight) {
+                        paintingHeight = initialCanvasHeight * 0.8; // Fit to 80% of canvas height
+                        paintingWidth = paintingHeight / (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
+                        paintingX = (initialCanvasWidth / 2) - (paintingWidth / 2);
+                        paintingY = (initialCanvasHeight / 2) - (paintingHeight / 2);
+                    }
+
+
+                } else {
+                    // Fallback default if combinedPaintingImageBitmap is not ready
+                    paintingWidth = 200;
+                    paintingHeight = 200;
+                    paintingX = (initialCanvasWidth / 2) - (paintingWidth / 2);
+                    paintingY = (initialCanvasHeight / 2) - (paintingHeight / 2);
+                }
+
                 drawCanvas();
             }
         });
     }
 
-    function closeTryOnModal() {
-        showTryOnModal = false;
-        isDragging = false; // Ensure dragging state is reset
-    }
+    // ... (handleWallImageUpload - unchanged, as it sets canvas width/height based on wall image)
 
-    // NEW: Function to combine the painting with the frame
-    async function combinePaintingAndFrame() {
-        if (!paintingImage.complete || !frameImage.complete) {
-            console.log("Waiting for painting or frame to load before combining.");
-            return; // Wait for both to be loaded
-        }
-        if (paintingImage.naturalWidth === 0 || frameImage.naturalWidth === 0) {
-            console.warn("Painting or frame image failed to load with dimensions. Cannot combine.");
-            return;
-        }
-
-
-        const frameCanvas = document.createElement('canvas');
-        const frameCtx = frameCanvas.getContext('2d');
-
-        // Set frame canvas size to frame image size
-        frameCanvas.width = frameImage.naturalWidth;
-        frameCanvas.height = frameImage.naturalHeight;
-
-        // Draw the frame first
-        frameCtx.drawImage(frameImage, 0, 0, frameCanvas.width, frameCanvas.height);
-
-        // --- Calculate where to draw the painting inside the frame ---
-        // These values are based on the analysis of your 11429042.png frame (3328x4864)
-        // Adjust these if your frame or its inner transparent area changes significantly
-        const innerFrameX = 500;
-        const innerFrameY = 500;
-        const innerFrameWidth = frameCanvas.width - (innerFrameX * 2); // 3328 - 200 - 200 = 2928
-        const innerFrameHeight = frameCanvas.height - (innerFrameY * 2); // 4864 - 200 - 200 = 4464
-
-
-        // Calculate aspect ratios
-        const paintingAspectRatio = paintingImage.naturalWidth / paintingImage.naturalHeight;
-        const innerFrameAspectRatio = innerFrameWidth / innerFrameHeight;
-
-        let drawWidth, drawHeight, drawX, drawY;
-
-        // Scale painting to fit *within* the inner frame area while maintaining aspect ratio
-        if (paintingAspectRatio > innerFrameAspectRatio) {
-            // Painting is wider than the frame's inner area (relative to height)
-            drawWidth = innerFrameWidth;
-            drawHeight = innerFrameWidth / paintingAspectRatio;
-        } else {
-            // Painting is taller than the frame's inner area (relative to width)
-            drawHeight = innerFrameHeight;
-            drawWidth = innerFrameHeight * paintingAspectRatio;
-        }
-
-        // Center the painting within the inner frame area
-        drawX = innerFrameX + (innerFrameWidth - drawWidth) / 2;
-        drawY = innerFrameY + (innerFrameHeight - drawHeight) / 2;
-
-        // Draw the painting over the frame
-        frameCtx.drawImage(paintingImage, drawX, drawY, drawWidth, drawHeight);
-
-        // Convert the combined image on the temporary canvas to an ImageBitmap
-        try {
-            combinedPaintingImageBitmap = await createImageBitmap(frameCanvas);
-            console.log("Combined painting and frame successfully into ImageBitmap.");
-            // Recalculate initial paintingHeight based on combined image bitmap
-            paintingHeight = paintingWidth * (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
-            drawCanvas(); // Redraw main canvas if modal is open
-        } catch (e) {
-            console.error("Error creating ImageBitmap from combined canvas (tainted?):", e);
-            alert("Error combining painting with frame. Check browser console for CORS issues.");
-            combinedPaintingImageBitmap = null; // Reset to ensure no partial state
-        } finally {
-             // Clean up temporary canvas
-             frameCanvas.width = 0; // Clear memory
-             frameCanvas.height = 0;
-        }
-    }
-
-
-    // Changed to use createImageBitmap for wall image
-    async function handleWallImageUpload(event) {
-        const file = event.target.files[0];
-        if (file) {
-            try {
-                // Use createImageBitmap directly from the File object
-                wallImageBitmap = await createImageBitmap(file);
-                console.log("Wall image loaded as ImageBitmap.");
-
-                // Adjust canvas dimensions to fit the wall image while maintaining aspect ratio
-                const maxCanvasWidth = 1000; // Max width for the canvas
-                const maxCanvasHeight = 600; // Max height for the canvas
-
-                let canvasW = wallImageBitmap.width;
-                let canvasH = wallImageBitmap.height;
-
-                if (canvasW > maxCanvasWidth) {
-                    canvasH = (maxCanvasWidth / canvasW) * canvasH;
-                    canvasW = maxCanvasWidth;
-                }
-                if (canvasH > maxCanvasHeight) {
-                    canvasW = (maxCanvasHeight / canvasH) * canvasW;
-                    canvasH = maxCanvasHeight;
-                }
-
-                canvasElement.width = canvasW;
-                canvasElement.height = canvasH;
-
-                // Reset painting position relative to the new canvas size
-                if (combinedPaintingImageBitmap) { // Only if combined image is ready
-                    paintingX = (canvasW / 2) - (paintingWidth / 2);
-                    paintingY = (canvasH / 2) - (paintingHeight / 2);
-                }
-
-
-                drawCanvas();
-            } catch (e) {
-                console.error("Failed to load wall image as ImageBitmap:", e);
-                alert("Error loading wall image. Please try another image (could be corrupted).");
-                wallImageBitmap = null; // Reset if error occurs
-            }
-        }
-    }
-
-    function drawCanvas() {
-        if (!ctx) {
-            // This should not happen often if openTryOnModal uses rAF correctly
-            console.warn("Canvas context not initialized. Re-initializing.");
-            if (canvasElement) {
-                 ctx = canvasElement.getContext('2d');
-            } else {
-                console.error("Canvas element not available for drawing.");
-                return;
-            }
-        }
-
-        // Clear the entire canvas
-        ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-        // 1. Draw the wall image (using ImageBitmap)
-        if (wallImageBitmap) {
-            ctx.drawImage(wallImageBitmap, 0, 0, canvasElement.width, canvasElement.height);
-        } else {
-            // If no wall image, draw a placeholder background
-            ctx.fillStyle = '#f0f0f0';
-            ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-            ctx.fillStyle = '#666';
-            ctx.font = '24px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('Upload your wall photo', canvasElement.width / 2, canvasElement.height / 2);
-        }
-
-        // 2. Draw the *combined* painting (with frame) *on top* of the wall image (using ImageBitmap)
-        if (combinedPaintingImageBitmap && paintingHeight !== undefined) {
-            ctx.drawImage(combinedPaintingImageBitmap, paintingX, paintingY, paintingWidth, paintingHeight);
-        }
-    }
-
-    // Helper to get mouse position relative to canvas
-    function getMousePos(canvas, evt) {
-        const rect = canvas.getBoundingClientRect();
-        // Scale mouse coordinates from CSS pixels to canvas pixels
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        return {
-            x: (evt.clientX - rect.left) * scaleX,
-            y: (evt.clientY - rect.top) * scaleY
-        };
-    }
-
-    function handleMouseDown(event) {
-        // Only allow dragging if wall image is present and combined painting is loaded
-        if (!wallImageBitmap || !combinedPaintingImageBitmap || paintingHeight === undefined) return;
-        event.preventDefault(); // Prevent default browser drag behavior
-
-        const mousePos = getMousePos(canvasElement, event);
-        // Check if mouse clicked on the painting
-        if (mousePos.x >= paintingX && mousePos.x <= paintingX + paintingWidth &&
-            mousePos.y >= paintingY && mousePos.y <= paintingY + paintingHeight) {
-            isDragging = true;
-            startX = mousePos.x;
-            startY = mousePos.y;
-            offsetX = mousePos.x - paintingX;
-            offsetY = mousePos.y - paintingY;
-            canvasElement.style.cursor = 'grabbing';
-        }
-    }
-
-    function handleMouseMove(event) {
-        if (!isDragging) return;
-        event.preventDefault(); // Prevent text selection etc.
-        const mousePos = getMousePos(canvasElement, event);
-        paintingX = mousePos.x - offsetX;
-        paintingY = mousePos.y - offsetY;
-        drawCanvas();
-    }
-
-    function handleMouseUp() {
-        isDragging = false;
-        if (canvasElement) { // Check if canvasElement exists before trying to set cursor
-            canvasElement.style.cursor = 'grab';
-        }
-    }
 
     // Logic for resizing with mouse wheel (scaling)
     function handleMouseWheel(event) {
@@ -360,34 +185,36 @@
         const scaleFactor = 1.1; // Scale coefficient
         const mousePos = getMousePos(canvasElement, event);
 
-        // Check if cursor is over the painting
-        if (mousePos.x >= paintingX && mousePos.x <= paintingX + paintingWidth &&
-            mousePos.y >= paintingY && mousePos.y <= paintingY + paintingHeight) {
+        // --- NEW LOGIC FOR MIN/MAX PAINTING SIZE RELATIVE TO CANVAS ---
+        // Minimum width: e.g., 5% of canvas width, but no smaller than 20px
+        const minPaintingWidthOnCanvas = Math.max(20, canvasElement.width * 0.05);
+        // Maximum width: e.g., 150% of canvas width
+        const maxPaintingWidthOnCanvas = canvasElement.width * 1.5;
 
-            let newWidth, newHeight;
-            if (event.deltaY < 0) { // Mouse wheel up (zoom in)
-                newWidth = paintingWidth * scaleFactor;
-            } else { // Mouse wheel down (zoom out)
-                newWidth = paintingWidth / scaleFactor;
-            }
 
-            // Limit min/max size based on canvas size and combined painting's natural size
-            newWidth = Math.max(combinedPaintingImageBitmap.width * 0.1, Math.min(newWidth, canvasElement.width * 1.5)); // Allow larger than canvas for detailed view if needed
-
-            // Maintain aspect ratio
-            const currentAspectRatio = combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width;
-            newHeight = newWidth * currentAspectRatio;
-
-            // Center scaling relative to the cursor position
-            paintingX = mousePos.x - (newWidth / paintingWidth) * (mousePos.x - paintingX);
-            paintingY = mousePos.y - (newHeight / paintingHeight) * (mousePos.y - paintingY);
-
-            paintingWidth = newWidth;
-            paintingHeight = newHeight;
-            drawCanvas();
+        let newWidth, newHeight;
+        if (event.deltaY < 0) { // Mouse wheel up (zoom in)
+            newWidth = paintingWidth * scaleFactor;
+        } else { // Mouse wheel down (zoom out)
+            newWidth = paintingWidth / scaleFactor;
         }
-    }
 
+        // Apply limits relative to the canvas size
+        newWidth = Math.max(minPaintingWidthOnCanvas, Math.min(newWidth, maxPaintingWidthOnCanvas));
+
+
+        // Maintain aspect ratio
+        const currentAspectRatio = combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width;
+        newHeight = newWidth * currentAspectRatio;
+
+        // Center scaling relative to the cursor position
+        paintingX = mousePos.x - (newWidth / paintingWidth) * (mousePos.x - paintingX);
+        paintingY = mousePos.y - (newHeight / paintingHeight) * (mousePos.y - paintingY);
+
+        paintingWidth = newWidth;
+        paintingHeight = newHeight;
+        drawCanvas();
+    }
     // Save the image (temporarily disabled)
     function savePreviewImage() {
         alert("Saving is temporarily disabled for testing. Please check console for errors.");
