@@ -2,6 +2,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores';
     import * as THREE from 'three';
+    import { browser } from '$app/environment'; // Import browser flag for conditional execution
 
     export let data; // Data from your +page.server.js or +layout.server.js
 
@@ -16,31 +17,39 @@
     let arSupportMessage = "Checking AR support...";
     let currentStatus = "Loading painting...";
 
-    // Original painting image and frame image (similar to your existing +page.svelte)
-    let paintingImage = new Image();
-    let frameImage = new Image();
+    // Original painting image and frame image
+    // Initialize these within onMount, or ensure their usage is within onMount
+    let paintingImage;
+    let frameImage;
     let combinedPaintingImageBitmap = null;
 
-    // --- Start: Image Loading and Combining Logic (similar to +page.svelte) ---
+    // --- Start: Image Loading and Combining Logic ---
 
-    // Load frame image first
-    // !!! IMPORTANT: Update this path to your frame image !!!
-    // Assuming frame is local in static/frames/
-    frameImage.src = '/frames/11429042.png';
-    frameImage.onload = () => {
-        console.log("AR: Frame image loaded.");
-        if (paintingImage.complete) {
-            combinePaintingAndFrame();
-        }
-    };
-    frameImage.onerror = (e) => {
-        console.error("AR: Failed to load frame image. Check path:", frameImage.src, e);
-        arSupportMessage = "Error loading frame image. Check console.";
-        isLoading = false;
-    };
+    // This block will now be entirely within onMount
+    async function setupImageLoadingAndCombining() {
+        console.log("AR: Setting up image loading and combining...");
+        currentStatus = "Loading painting images...";
 
-    // Load painting image via proxy
-    $: {
+        paintingImage = new Image();
+        frameImage = new Image();
+
+        // Load frame image first
+        // !!! IMPORTANT: Update this path to your frame image !!!
+        // Assuming frame is local in static/frames/
+        frameImage.src = '/frames/11429042.png'; // Ensure this path is correct
+        frameImage.onload = () => {
+            console.log("AR: Frame image loaded.");
+            if (paintingImage.complete && paintingImage.src) { // Check paintingImage.src to ensure it was set
+                combinePaintingAndFrame();
+            }
+        };
+        frameImage.onerror = (e) => {
+            console.error("AR: Failed to load frame image. Check path:", frameImage.src, e);
+            arSupportMessage = "Error loading frame image. Check console.";
+            isLoading = false;
+        };
+
+        // Load painting image via proxy
         if (data.painting && data.painting.previewImage) {
             const cloudinaryBasePrefix = 'https://res.cloudinary.com/dvfjsg1c6/image/upload/'; // !!! Match your cloud name !!!
             let cloudinaryPath = data.painting.previewImage.replace(cloudinaryBasePrefix, '');
@@ -52,7 +61,7 @@
 
             paintingImage.onload = () => {
                 console.log("AR: Product painting image loaded (via proxy).");
-                if (frameImage.complete) {
+                if (frameImage.complete && frameImage.src) { // Check frameImage.src
                     combinePaintingAndFrame();
                 }
             };
@@ -82,6 +91,7 @@
             return;
         }
 
+        // These DOM operations must be in a browser environment
         const frameCanvas = document.createElement('canvas');
         const frameCtx = frameCanvas.getContext('2d');
 
@@ -90,7 +100,7 @@
 
         frameCtx.drawImage(frameImage, 0, 0, frameCanvas.width, frameCanvas.height);
 
-        const innerFrameX = 200;
+        const innerFrameX = 200; // These values might need tuning based on your frame image
         const innerFrameY = 200;
         const innerFrameWidth = frameImage.naturalWidth - (innerFrameX * 2);
         const innerFrameHeight = frameImage.naturalHeight - (innerFrameY * 2);
@@ -110,15 +120,14 @@
         let drawWidth = targetWidth;
         let drawHeight = targetHeight;
 
+        // This block tries to prevent upscaling small images too much, but ensure they fit
         if (paintingImage.naturalWidth < targetWidth || paintingImage.naturalHeight < targetHeight) {
-            if (paintingImage.naturalWidth <= innerFrameWidth && paintingImage.naturalHeight <= innerFrameHeight) {
-                 drawWidth = Math.min(targetWidth, paintingImage.naturalWidth);
-                 drawHeight = Math.min(targetHeight, paintingImage.naturalHeight);
-            } else {
-                 drawWidth = targetWidth;
-                 drawHeight = targetHeight;
-            }
+            // If painting is smaller than target, fit it within target while maintaining aspect ratio
+            const scaleFactor = Math.min(targetWidth / paintingImage.naturalWidth, targetHeight / paintingImage.naturalHeight);
+            drawWidth = paintingImage.naturalWidth * scaleFactor;
+            drawHeight = paintingImage.naturalHeight * scaleFactor;
         }
+
 
         const drawX = innerFrameX + (innerFrameWidth - drawWidth) / 2;
         const drawY = innerFrameY + (innerFrameHeight - drawHeight) / 2;
@@ -135,6 +144,7 @@
             arSupportMessage = "Error combining painting. Check console.";
             isLoading = false;
         } finally {
+             // Clear canvas dimensions to free memory, as ImageBitmap is created
              frameCanvas.width = 0;
              frameCanvas.height = 0;
         }
@@ -146,6 +156,14 @@
     // --- Start: WebXR and Three.js Setup ---
 
     onMount(async () => {
+        // Ensure this code only runs in the browser
+        if (!browser) {
+            console.warn("AR: Not running on client, skipping AR setup.");
+            arSupportMessage = "AR mode only available on devices with WebXR support.";
+            isLoading = false;
+            return;
+        }
+
         // Basic Three.js setup (renderer, scene, camera)
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(); // WebXR will handle camera updates
@@ -153,7 +171,7 @@
         renderer = new THREE.WebGLRenderer({
             alpha: true,
             preserveDrawingBuffer: true,
-            canvas: arCanvas,
+            canvas: arCanvas, // arCanvas is bound to the actual DOM element
             antialias: true // For smoother edges
         });
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -170,7 +188,8 @@
         reticle.visible = false; // Hide until a hit-test is successful
         scene.add(reticle);
 
-        // checkArSupport() will be called after combinedPaintingImageBitmap is ready
+        // Initiate image loading and combining now that we are in the browser
+        setupImageLoadingAndCombining();
     });
 
     async function checkArSupport() {
@@ -212,7 +231,7 @@
             xrSession = await navigator.xr.requestSession('immersive-ar', {
                 requiredFeatures: ['hit-test', 'dom-overlay'], // dom-overlay needed for UI buttons over AR
                 optionalFeatures: ['light-estimation'], // For better realism
-                // domOverlay: { root: document.querySelector('.ar-ui-overlay') } // If you need a full DOM overlay
+                 domOverlay: { root: document.querySelector('.ar-ui-overlay') } // IMPORTANT: Link your UI overlay
             });
 
             renderer.xr.setSession(xrSession);
@@ -222,13 +241,19 @@
 
             // Request a reference space for tracking
             const referenceSpace = await xrSession.requestReferenceSpace('local-floor'); // Or 'viewer' for simpler setup
-            hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
+            // Corrected: hitTestSource needs to be created on the session, not global 'session' variable
+            hitTestSource = await xrSession.requestHitTestSource({ space: referenceSpace });
+
 
             // Start the AR frame loop
             renderer.setAnimationLoop(onXRFrame);
 
             // Add touch listener for placing object
-            arCanvas.addEventListener('touchstart', onTouchStart);
+            // Ensure arCanvas is available before adding listener
+            if (arCanvas) {
+                arCanvas.addEventListener('touchstart', onTouchStart);
+            }
+
 
         } catch (error) {
             console.error("Error starting WebXR session:", error);
@@ -239,6 +264,12 @@
     }
 
     function onXRFrame(time, frame) {
+        if (!renderer || !scene || !camera || !hitTestSource || !reticle) {
+            // If something is not initialized, stop processing frames
+            console.warn("AR: Essential WebXR components not ready in onXRFrame.");
+            return;
+        }
+
         const referenceSpace = renderer.xr.getReferenceSpace();
         const session = frame.session;
 
@@ -273,43 +304,68 @@
     async function onTouchStart(event) {
         if (!xrSession || !hitTestSource || paintingMesh) return; // Only allow placing once
 
-        const referenceSpace = renderer.xr.getReferenceSpace();
-        const frame = xrSession.requestAnimationFrame(onXRFrame); // Request a frame to get hit test result
-        const hitTestResults = frame.getHitTestResults(hitTestSource);
+        // Get the touch event from the DOM overlay
+        // Note: When using dom-overlay, touch events might be on the document or canvas
+        // For simplicity, we assume the first touch is for placement
+        // In a real app, you'd want to use `xrSession.inputSources` and `frame.getPose`
+        // to get the exact touch position in XR space.
+        // For hit-testing, we'll use the reticle's current position if visible.
 
-        if (hitTestResults.length > 0) {
-            const hitPose = hitTestResults[0].getPose(referenceSpace);
-            if (hitPose && combinedPaintingImageBitmap) {
+        if (reticle && reticle.visible) {
+            // Use the reticle's last known hit pose for placement
+            // This assumes the reticle correctly tracks a surface
+            const hitPose = new THREE.Pose(reticle.position, reticle.quaternion);
+
+            if (combinedPaintingImageBitmap) {
                 // Remove reticle once painting is placed
                 scene.remove(reticle);
-                reticle.dispose(); // Clean up reticle resources
+                // reticle.geometry.dispose(); // Geometries/materials should be disposed in onDestroy or onSessionEnd
+                // reticle.material.dispose();
                 reticle = null;
 
 
                 // Create and place the painting mesh
                 const texture = new THREE.CanvasTexture(combinedPaintingImageBitmap);
+                texture.colorSpace = THREE.SRGBColorSpace; // Most images are sRGB
+                texture.needsUpdate = true; // Ensure texture updates
+
                 const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
 
                 // Scale for AR: Decide how large 1 pixel of your combined image should be in meters
-                // Let's assume a standard painting might be around 0.8 meters tall in real life
                 // You might get painting dimensions from data.painting.dimensions and convert
-                const realWorldPaintingHeightMeters = 0.8; // Example: 80cm tall
-                const aspectRatio = combinedPaintingImageBitmap.width / combinedPaintingImageBitmap.height;
-                const realWorldPaintingWidthMeters = realWorldPaintingHeightMeters * aspectRatio;
+                // Example: If data.painting.dimensions is "120x80 cm"
+                let realWorldPaintingWidthMeters = 0.8; // Default to 80cm wide
+                let realWorldPaintingHeightMeters = 1.2; // Default to 120cm tall
+
+                if (data.painting && data.painting.dimensions) {
+                    // Assuming dimensions are like "W x H cm"
+                    const dimMatch = data.painting.dimensions.match(/(\d+)x(\d+)\s*cm/i);
+                    if (dimMatch) {
+                        realWorldPaintingWidthMeters = parseFloat(dimMatch[1]) / 100; // Convert cm to meters
+                        realWorldPaintingHeightMeters = parseFloat(dimMatch[2]) / 100;
+                        console.log(`AR: Using painting dimensions: ${realWorldPaintingWidthMeters}m x ${realWorldPaintingHeightMeters}m`);
+                    }
+                } else {
+                    console.warn("AR: Painting dimensions not found in data. Using default size.");
+                    // Fallback to aspect ratio from combined image if no dimensions data
+                    const aspectRatio = combinedPaintingImageBitmap.width / combinedPaintingImageBitmap.height;
+                    realWorldPaintingHeightMeters = 1.0; // Assume 1 meter height if no data
+                    realWorldPaintingWidthMeters = realWorldPaintingHeightMeters * aspectRatio;
+                }
 
                 const geometry = new THREE.PlaneGeometry(realWorldPaintingWidthMeters, realWorldPaintingHeightMeters);
                 paintingMesh = new THREE.Mesh(geometry, material);
 
                 // Position the mesh using the hit-test result
-                paintingMesh.position.set(hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z);
+                paintingMesh.position.set(hitPose.position.x, hitPose.position.y, hitPose.position.z);
                 // Orient the painting to align with the detected surface normal
-                paintingMesh.quaternion.set(hitPose.transform.orientation.x, hitPose.transform.orientation.y, hitPose.transform.orientation.z, hitPose.transform.orientation.w);
+                paintingMesh.quaternion.set(hitPose.orientation.x, hitPose.orientation.y, hitPose.orientation.z, hitPose.orientation.w);
 
                 // Adjust rotation slightly if it's not perfectly flush with the wall
                 // paintingMesh.rotateX(Math.PI / 2); // If your plane is created standing up
 
                 // Small offset to prevent z-fighting with the real wall
-                const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(hitPose.transform.orientation);
+                const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(hitPose.orientation);
                 paintingMesh.position.add(normal.multiplyScalar(0.005)); // Move 0.5 cm off the wall
 
                 scene.add(paintingMesh);
@@ -317,7 +373,9 @@
                 console.log("AR: Painting placed in AR.");
 
                 // Remove the touch listener once placed (or adjust for moving/scaling)
+                // If you want to allow re-placing or moving, modify this.
                 arCanvas.removeEventListener('touchstart', onTouchStart);
+
                 // TODO: Add logic for moving/scaling the painting after it's placed.
                 // This would involve more advanced touch listeners and raycasting in Three.js.
             }
@@ -341,11 +399,22 @@
             paintingMesh = null;
         }
         if (reticle) { // Re-add reticle if session ends for next potential session
-             scene.add(reticle);
-             reticle.visible = false;
+            // Dispose existing reticle if it exists before recreating
+            if (reticle.geometry) reticle.geometry.dispose();
+            if (reticle.material) reticle.material.dispose();
+
+            // Recreate reticle to ensure it's in a clean state for next session
+            const geometry = new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2);
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            reticle = new THREE.Mesh(geometry, material);
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
         }
 
-        arCanvas.removeEventListener('touchstart', onTouchStart);
+        if (arCanvas) { // Check if canvas exists before removing listener
+            arCanvas.removeEventListener('touchstart', onTouchStart);
+        }
         currentStatus = "AR Session ended.";
         checkArSupport(); // Re-check support for next time
     }
@@ -357,13 +426,14 @@
         if (renderer) {
             renderer.dispose();
         }
+        // Dispose geometries and materials only if they exist
         if (paintingMesh) {
-            paintingMesh.geometry.dispose();
-            paintingMesh.material.dispose();
+            if (paintingMesh.geometry) paintingMesh.geometry.dispose();
+            if (paintingMesh.material) paintingMesh.material.dispose();
         }
         if (reticle) {
-            reticle.geometry.dispose();
-            reticle.material.dispose();
+            if (reticle.geometry) reticle.geometry.dispose();
+            if (reticle.material) reticle.material.dispose();
         }
         if (combinedPaintingImageBitmap) {
             combinedPaintingImageBitmap.close(); // Release bitmap memory
@@ -375,6 +445,7 @@
 </script>
 
 <style>
+    /* Your existing styles are fine */
     .ar-page-container {
         position: fixed;
         top: 0;
@@ -485,16 +556,25 @@
                 <p>{currentStatus}</p>
             {:else}
                 <p>{arSupportMessage}</p>
+                {#if xrSession}
                 <p>{currentStatus}</p>
+                {/if}
             {/if}
         </div>
 
         <div class="ar-actions">
-            {#if !xrSession}
-                <button on:click={startArSession} class="ar-button">Start AR</button>
-            {:else}
+            {#if !isLoading && arSupportMessage.includes("AR supported")}
+                <button on:click={startArSession} class="ar-button">
+                    {#if !xrSession}
+                        Start AR
+                    {:else}
+                        Restart AR (Debugging)
+                    {/if}
+                </button>
+            {/if}
+            {#if xrSession}
                 <button on:click={onSessionEnd} class="ar-close-button">Exit AR</button>
-                {/if}
+            {/if}
         </div>
     </div>
 </div>
