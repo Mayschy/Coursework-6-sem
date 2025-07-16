@@ -2,12 +2,12 @@
 import { error, redirect } from '@sveltejs/kit'; // Добавлено 'redirect'
 import { connectDB } from '$lib/server/db';
 import { ObjectId } from 'mongodb';
-import UAParser from 'ua-parser-js'; // Импортируем UAParser
+import { UAParser } from 'ua-parser-js'; // Обратите внимание на фигурные скобки { UAParser }
 
 export async function load({ params, locals, request }) { // Добавлен 'request' в аргументы
     const paintingId = params.id;
 
-    // --- Обнаружение устройства ---
+    // --- Обнаружение устройства  ---
     const userAgentString = request.headers.get('user-agent');
     const parser = new UAParser(userAgentString);
     const device = parser.getDevice();
