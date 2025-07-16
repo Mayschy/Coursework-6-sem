@@ -33,7 +33,7 @@
         frameImage = new Image();
 
         // Load frame image first
-        frameImage.src = '/frames/11429042.jpg';
+        frameImage.src = '/frames/11429042.png';
         frameImage.onload = () => {
             console.log("AR: Frame image loaded.");
             if (paintingImage.complete && paintingImage.src) {
