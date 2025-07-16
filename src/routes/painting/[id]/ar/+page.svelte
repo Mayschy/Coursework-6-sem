@@ -10,6 +10,7 @@
     let renderer, scene, camera;
     let xrSession = null;
     let hitTestSource = null;
+    let referenceSpace = null; // New: Store the reference space here
     let paintingMesh = null; // Our 3D model of the painting in AR
     let reticle = null; // Visual indicator for hit-test results
 
@@ -32,10 +33,7 @@
         frameImage = new Image();
 
         // Load frame image first
-        // !!! IMPORTANT: Update this path to your frame image !!!
-        // Assuming frame is local in static/frames/
-        // User provided: 11429042.jpg, which is a frame image.
-        frameImage.src = '/frames/11429042.png'; // Corrected path based on your uploaded file
+        frameImage.src = '/frames/11429042.jpg';
         frameImage.onload = () => {
             console.log("AR: Frame image loaded.");
             if (paintingImage.complete && paintingImage.src) {
@@ -210,6 +208,7 @@
             return;
         }
 
+        // If session is already active, end it first (for 'Restart AR' button)
         if (xrSession) {
             xrSession.end();
             return;
@@ -223,6 +222,7 @@
                 domOverlay: { root: document.querySelector('.ar-ui-overlay') }
             });
 
+            // Set the session on the renderer as soon as it's available
             renderer.xr.setSession(xrSession);
             xrSession.addEventListener('end', onSessionEnd);
 
@@ -236,6 +236,7 @@
                     const space = await xrSession.requestReferenceSpace(spaceType);
                     if (space) {
                         selectedReferenceSpaceType = spaceType;
+                        referenceSpace = space; // Store the chosen reference space
                         break;
                     }
                 } catch (innerError) {
@@ -244,13 +245,14 @@
             }
 
             if (!selectedReferenceSpaceType) {
+                // If no suitable reference space is found, end the session and throw error
+                xrSession.end(); // Clean up the session
                 throw new Error("No suitable XR reference space found on this device.");
             }
 
-            const referenceSpace = await xrSession.requestReferenceSpace(selectedReferenceSpaceType);
             hitTestSource = await xrSession.requestHitTestSource({ space: referenceSpace });
 
-
+            // ONLY START THE ANIMATION LOOP AFTER EVERYTHING IS READY
             renderer.setAnimationLoop(onXRFrame);
 
             if (arCanvas) {
@@ -262,22 +264,30 @@
             alert(`Could not start AR session: ${error.message}. Make sure your device supports AR and try again.`);
             currentStatus = `AR Session failed: ${error.message}`;
             isLoading = false;
+            // Ensure xrSession is null if setup failed, to allow retrying
+            if (xrSession) {
+                xrSession.end();
+            }
+            xrSession = null; // Explicitly nullify
         }
     }
 
     function onXRFrame(time, frame) {
-        if (!renderer || !scene || !camera || !hitTestSource || !reticle) {
-            console.warn("AR: Essential WebXR components not ready in onXRFrame.");
+        // IMPORTANT: Check if xrSession is still active
+        if (!xrSession || !renderer || !scene || !camera || !hitTestSource || !reticle || !referenceSpace) {
+            console.warn("AR: onXRFrame called with unready or ended XR session/components. Stopping loop.");
+            renderer.setAnimationLoop(null); // Stop the animation loop
             return;
         }
 
-        const referenceSpace = renderer.xr.getReferenceSpace();
-        const session = frame.session;
+        // Original: const referenceSpace = renderer.xr.getReferenceSpace(); // This can return null if not correctly set
+        // Use the stored referenceSpace variable
+        const session = frame.session; // Now session should be defined
 
-        const viewerPose = frame.getViewerPose(referenceSpace);
+        const viewerPose = frame.getViewerPose(referenceSpace); // Use the stored referenceSpace
 
         if (viewerPose) {
-            console.log("AR: Viewer Pose received. Camera should be active."); // Diagnostic log
+            // console.log("AR: Viewer Pose received. Camera should be active."); // Diagnostic log - can be too noisy
             camera.matrix.fromArray(viewerPose.transform.matrix);
             camera.updateMatrixWorld(true);
 
@@ -295,12 +305,13 @@
                 currentStatus = "Move around to find a surface.";
             }
         } else {
-             console.warn("AR: No Viewer Pose in this frame."); // Diagnostic log
+             // console.warn("AR: No Viewer Pose in this frame."); // Diagnostic log - can be too noisy
         }
 
         renderer.render(scene, camera);
     }
 
+    // ... (onTouchStart, onSessionEnd, onDestroy remain the same as previous full code)
     async function onTouchStart(event) {
         if (!xrSession || !hitTestSource || paintingMesh) return;
 
@@ -359,6 +370,9 @@
             hitTestSource.cancel();
             hitTestSource = null;
         }
+        if (referenceSpace) { // Nullify reference space too
+            referenceSpace = null;
+        }
         renderer.setAnimationLoop(null);
 
         if (paintingMesh) {
@@ -404,6 +418,7 @@
             combinedPaintingImageBitmap.close();
         }
     });
+
 </script>
 
 <style>
