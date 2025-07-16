@@ -9,17 +9,19 @@
 
     // New variables for the "Try on wall" modal
     let showTryOnModal = false;
-    let uploadedWallImageFile = null; // Will store the File object for the uploaded wall image
     let canvasElement; // Reference to the HTML canvas element
     let ctx; // 2D drawing context for canvas
 
-    let wallImage = new Image();     // Image object for the uploaded wall
+    // Use ImageBitmap for wallImage for security
+    let wallImageBitmap = null; // Will store ImageBitmap for the uploaded wall
 
     // NEW: Image object for the frame
     let frameImage = new Image();
-    frameImage.src = '/frames/11429042.png'; // !!! IMPORTANT: Update this path to your frame image !!!
-                                                     // Make sure this image is placed in 'static/frames/' directory
-                                                     // e.g., 'static/frames/11429042.jpg'
+    // !!! IMPORTANT: Update this path to your frame image !!!
+    // If your frame is local (e.g., in static/frames/), use '/frames/11429042.jpg'
+    // If your frame is also on Cloudinary, use the proxy like the paintingImage
+    frameImage.src = '/frames/11429042.jpg'; // Assuming frame is local for now
+    // frameImage.crossOrigin = "anonymous"; // No need for local files
     frameImage.onload = () => {
         console.log("Frame image loaded.");
         // If painting is already loaded, combine them
@@ -27,27 +29,54 @@
             combinePaintingAndFrame();
         }
     };
-    frameImage.onerror = () => console.error("Failed to load frame image. Check path:", frameImage.src);
+    frameImage.onerror = (e) => {
+        console.error("Failed to load frame image. Check path:", frameImage.src, e);
+        alert("Error loading frame image. Please check console for details.");
+    };
 
 
     // NEW: Combined painting (painting inside the frame)
-    let combinedPaintingImage = new Image();
-    let combinedPaintingDataURL = ''; // Store the DataURL of the combined image
+    let combinedPaintingImageBitmap = null; // Store ImageBitmap of combined image
 
     // Original painting image (used to generate the combined image)
     let paintingImage = new Image();
+    // No need for crossOrigin here, as it will go through our proxy
+    // paintingImage.crossOrigin = "anonymous"; // No longer needed directly on this Image object
     // Load the original painting image when the component mounts or data changes
     $: {
         if (data.painting && data.painting.previewImage) {
-            paintingImage.src = data.painting.previewImage;
+            // Transform Cloudinary URL to our proxy URL
+            // Example: "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v12345/my_image.jpg"
+            // becomes "/api/proxy-image/v12345/my_image.jpg"
+
+            // Get the path part of the Cloudinary URL.
+            // This is a simplified example. You might need a more robust parsing
+            // depending on the exact structure of your Cloudinary URLs.
+            const cloudinaryBasePrefix = 'https://res.cloudinary.com/dvfjsg1c6/image/upload/'; // !!! Match your cloud name !!!
+            let cloudinaryPath = data.painting.previewImage.replace(cloudinaryBasePrefix, '');
+            // Handle cases where previewImage might include transformations like /f_auto,q_auto/
+            // You might need to adjust this depending on your exact Cloudinary URL structure.
+            // For example, if your original path is always after '/upload/',
+            // you might split by '/upload/' and take the second part.
+            if (data.painting.previewImage.includes('/upload/')) {
+                cloudinaryPath = data.painting.previewImage.split('/upload/')[1];
+            }
+
+
+            paintingImage.src = `/api/proxy-image/${cloudinaryPath}`;
+            console.log("Proxying painting image from:", paintingImage.src);
+
             paintingImage.onload = () => {
-                console.log("Product painting image loaded.");
+                console.log("Product painting image loaded (via proxy).");
                 // If frame is also loaded, combine them
                 if (frameImage.complete) {
                     combinePaintingAndFrame();
                 }
             };
-            paintingImage.onerror = () => console.error("Failed to load product painting image:", data.painting.previewImage);
+            paintingImage.onerror = (e) => {
+                console.error("Failed to load product painting image (via proxy). Check server logs:", paintingImage.src, e);
+                alert("Error loading product image. Please check console and server logs.");
+            };
         }
     }
 
@@ -94,12 +123,11 @@
     function openTryOnModal() {
         showTryOnModal = true;
         // Reset state when opening the modal
-        uploadedWallImageFile = null;
-        wallImage.src = ''; // Clear previous wall image
+        wallImageBitmap = null; // Clear previous wall image bitmap
         // Reset painting position and size for the *combined* image
-        if (combinedPaintingImage.complete) {
+        if (combinedPaintingImageBitmap) { // Use combinedPaintingImageBitmap here
             paintingWidth = 300; // Reset to an initial size
-            paintingHeight = paintingWidth * (combinedPaintingImage.height / combinedPaintingImage.width);
+            paintingHeight = paintingWidth * (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
             paintingX = 50;
             paintingY = 50;
         } else {
@@ -126,31 +154,38 @@
     }
 
     // NEW: Function to combine the painting with the frame
-    function combinePaintingAndFrame() {
+    async function combinePaintingAndFrame() {
         if (!paintingImage.complete || !frameImage.complete) {
             console.log("Waiting for painting or frame to load before combining.");
             return; // Wait for both to be loaded
         }
+        if (paintingImage.naturalWidth === 0 || frameImage.naturalWidth === 0) {
+            console.warn("Painting or frame image failed to load with dimensions. Cannot combine.");
+            return;
+        }
+
 
         const frameCanvas = document.createElement('canvas');
         const frameCtx = frameCanvas.getContext('2d');
 
         // Set frame canvas size to frame image size
-        frameCanvas.width = frameImage.width;
-        frameCanvas.height = frameImage.height;
+        frameCanvas.width = frameImage.naturalWidth;
+        frameCanvas.height = frameImage.naturalHeight;
 
         // Draw the frame first
         frameCtx.drawImage(frameImage, 0, 0, frameCanvas.width, frameCanvas.height);
 
         // --- Calculate where to draw the painting inside the frame ---
-        // These values are based on the analysis of your 11429042.jpg frame
+        // These values are based on the analysis of your 11429042.jpg frame (3328x4864)
+        // Adjust these if your frame or its inner transparent area changes significantly
         const innerFrameX = 200;
         const innerFrameY = 200;
-        const innerFrameWidth = 2928; // 3328 - 200 - 200
-        const innerFrameHeight = 4464; // 4864 - 200 - 200
+        const innerFrameWidth = frameCanvas.width - (innerFrameX * 2); // 3328 - 200 - 200 = 2928
+        const innerFrameHeight = frameCanvas.height - (innerFrameY * 2); // 4864 - 200 - 200 = 4464
+
 
         // Calculate aspect ratios
-        const paintingAspectRatio = paintingImage.width / paintingImage.height;
+        const paintingAspectRatio = paintingImage.naturalWidth / paintingImage.naturalHeight;
         const innerFrameAspectRatio = innerFrameWidth / innerFrameHeight;
 
         let drawWidth, drawHeight, drawX, drawY;
@@ -173,73 +208,87 @@
         // Draw the painting over the frame
         frameCtx.drawImage(paintingImage, drawX, drawY, drawWidth, drawHeight);
 
-        // Convert the combined image on the temporary canvas to a DataURL
-        combinedPaintingDataURL = frameCanvas.toDataURL('image/png');
-        combinedPaintingImage.src = combinedPaintingDataURL;
-        combinedPaintingImage.onload = () => {
-            console.log("Combined painting and frame. Ready for wall.");
-            // Recalculate initial paintingHeight based on combined image
-            paintingHeight = paintingWidth * (combinedPaintingImage.height / combinedPaintingImage.width);
+        // Convert the combined image on the temporary canvas to an ImageBitmap
+        try {
+            combinedPaintingImageBitmap = await createImageBitmap(frameCanvas);
+            console.log("Combined painting and frame successfully into ImageBitmap.");
+            // Recalculate initial paintingHeight based on combined image bitmap
+            paintingHeight = paintingWidth * (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
             drawCanvas(); // Redraw main canvas if modal is open
-        };
-        combinedPaintingImage.onerror = () => console.error("Failed to create combined painting image.");
-
-        // Clean up temporary canvas
-        frameCanvas.remove();
+        } catch (e) {
+            console.error("Error creating ImageBitmap from combined canvas (tainted?):", e);
+            alert("Error combining painting with frame. Check browser console for CORS issues.");
+            combinedPaintingImageBitmap = null; // Reset to ensure no partial state
+        } finally {
+             // Clean up temporary canvas
+             frameCanvas.width = 0; // Clear memory
+             frameCanvas.height = 0;
+        }
     }
 
 
-    function handleWallImageUpload(event) {
+    // Changed to use createImageBitmap for wall image
+    async function handleWallImageUpload(event) {
         const file = event.target.files[0];
         if (file) {
-            uploadedWallImageFile = file;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                wallImage.src = e.target.result;
-                wallImage.onload = () => {
-                    // Adjust canvas dimensions to fit the wall image while maintaining aspect ratio
-                    const maxCanvasWidth = 1000; // Max width for the canvas
-                    const maxCanvasHeight = 600; // Max height for the canvas
+            try {
+                // Use createImageBitmap directly from the File object
+                wallImageBitmap = await createImageBitmap(file);
+                console.log("Wall image loaded as ImageBitmap.");
 
-                    let canvasW = wallImage.width;
-                    let canvasH = wallImage.height;
+                // Adjust canvas dimensions to fit the wall image while maintaining aspect ratio
+                const maxCanvasWidth = 1000; // Max width for the canvas
+                const maxCanvasHeight = 600; // Max height for the canvas
 
-                    if (canvasW > maxCanvasWidth) {
-                        canvasH = (maxCanvasWidth / canvasW) * canvasH;
-                        canvasW = maxCanvasWidth;
-                    }
-                    if (canvasH > maxCanvasHeight) {
-                        canvasW = (maxCanvasHeight / canvasH) * canvasW;
-                        canvasH = maxCanvasHeight;
-                    }
+                let canvasW = wallImageBitmap.width;
+                let canvasH = wallImageBitmap.height;
 
-                    canvasElement.width = canvasW;
-                    canvasElement.height = canvasH;
+                if (canvasW > maxCanvasWidth) {
+                    canvasH = (maxCanvasWidth / canvasW) * canvasH;
+                    canvasW = maxCanvasWidth;
+                }
+                if (canvasH > maxCanvasHeight) {
+                    canvasW = (maxCanvasHeight / canvasH) * canvasW;
+                    canvasH = maxCanvasHeight;
+                }
 
-                    // Reset painting position relative to the new canvas size
+                canvasElement.width = canvasW;
+                canvasElement.height = canvasH;
+
+                // Reset painting position relative to the new canvas size
+                if (combinedPaintingImageBitmap) { // Only if combined image is ready
                     paintingX = (canvasW / 2) - (paintingWidth / 2);
                     paintingY = (canvasH / 2) - (paintingHeight / 2);
+                }
 
-                    drawCanvas();
-                };
-                wallImage.onerror = () => console.error("Failed to load wall image.");
-            };
-            reader.readAsDataURL(file);
+
+                drawCanvas();
+            } catch (e) {
+                console.error("Failed to load wall image as ImageBitmap:", e);
+                alert("Error loading wall image. Please try another image (could be corrupted).");
+                wallImageBitmap = null; // Reset if error occurs
+            }
         }
     }
 
     function drawCanvas() {
         if (!ctx) {
-            console.warn("Canvas context not initialized. This might be a timing issue.");
-            return;
+            // This should not happen often if openTryOnModal uses rAF correctly
+            console.warn("Canvas context not initialized. Re-initializing.");
+            if (canvasElement) {
+                 ctx = canvasElement.getContext('2d');
+            } else {
+                console.error("Canvas element not available for drawing.");
+                return;
+            }
         }
 
         // Clear the entire canvas
         ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-        // 1. Draw the wall image
-        if (wallImage.src && wallImage.complete) {
-            ctx.drawImage(wallImage, 0, 0, canvasElement.width, canvasElement.height);
+        // 1. Draw the wall image (using ImageBitmap)
+        if (wallImageBitmap) {
+            ctx.drawImage(wallImageBitmap, 0, 0, canvasElement.width, canvasElement.height);
         } else {
             // If no wall image, draw a placeholder background
             ctx.fillStyle = '#f0f0f0';
@@ -251,9 +300,9 @@
             ctx.fillText('Upload your wall photo', canvasElement.width / 2, canvasElement.height / 2);
         }
 
-        // 2. Draw the *combined* painting (with frame) *on top* of the wall image
-        if (combinedPaintingImage.src && combinedPaintingImage.complete && paintingHeight !== undefined) {
-            ctx.drawImage(combinedPaintingImage, paintingX, paintingY, paintingWidth, paintingHeight);
+        // 2. Draw the *combined* painting (with frame) *on top* of the wall image (using ImageBitmap)
+        if (combinedPaintingImageBitmap && paintingHeight !== undefined) {
+            ctx.drawImage(combinedPaintingImageBitmap, paintingX, paintingY, paintingWidth, paintingHeight);
         }
     }
 
@@ -271,7 +320,7 @@
 
     function handleMouseDown(event) {
         // Only allow dragging if wall image is present and combined painting is loaded
-        if (!wallImage.src || !combinedPaintingImage.src || paintingHeight === undefined) return;
+        if (!wallImageBitmap || !combinedPaintingImageBitmap || paintingHeight === undefined) return;
         event.preventDefault(); // Prevent default browser drag behavior
 
         const mousePos = getMousePos(canvasElement, event);
@@ -305,7 +354,7 @@
 
     // Logic for resizing with mouse wheel (scaling)
     function handleMouseWheel(event) {
-        if (!wallImage.src || !combinedPaintingImage.src || paintingHeight === undefined) return;
+        if (!wallImageBitmap || !combinedPaintingImageBitmap || paintingHeight === undefined) return;
         event.preventDefault(); // Prevent page scrolling
 
         const scaleFactor = 1.1; // Scale coefficient
@@ -323,10 +372,10 @@
             }
 
             // Limit min/max size based on canvas size and combined painting's natural size
-            newWidth = Math.max(combinedPaintingImage.width * 0.1, Math.min(newWidth, canvasElement.width * 1.5)); // Allow larger than canvas for detailed view if needed
+            newWidth = Math.max(combinedPaintingImageBitmap.width * 0.1, Math.min(newWidth, canvasElement.width * 1.5)); // Allow larger than canvas for detailed view if needed
 
             // Maintain aspect ratio
-            const currentAspectRatio = combinedPaintingImage.height / combinedPaintingImage.width;
+            const currentAspectRatio = combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width;
             newHeight = newWidth * currentAspectRatio;
 
             // Center scaling relative to the cursor position
@@ -339,21 +388,21 @@
         }
     }
 
-    // Save the image (Improved for reliability)
+    // Save the image (temporarily disabled)
     function savePreviewImage() {
-        if (!canvasElement || !wallImage.src || !wallImage.complete) {
+        alert("Saving is temporarily disabled for testing. Please check console for errors.");
+        // Re-enable this block once you confirm preview works and CORS is handled for all images.
+        /*
+        if (!canvasElement || !wallImageBitmap) {
             alert('Please upload a wall photo first and place the painting!');
             return;
         }
-        if (!combinedPaintingImage.src || !combinedPaintingImage.complete || paintingHeight === undefined) {
+        if (!combinedPaintingImageBitmap || paintingHeight === undefined) {
              alert('Painting with frame not fully loaded. Please wait and try again!');
             return;
         }
 
         try {
-            // Using a small timeout to ensure the canvas is fully rendered and
-            // to allow the browser to process UI updates before initiating download.
-            // This can sometimes bypass download blocking in certain browsers.
             setTimeout(() => {
                 const dataURL = canvasElement.toDataURL('image/png');
                 const link = document.createElement('a');
@@ -361,15 +410,15 @@
                 link.download = `preview_${sanitizedTitle}_framed.png`;
                 link.href = dataURL;
 
-                // Programmatically click the link
-                document.body.appendChild(link); // Temporarily append to body
+                document.body.appendChild(link);
                 link.click();
-                document.body.removeChild(link); // Clean up
-            }, 50); // Small delay, e.g., 50ms
+                document.body.removeChild(link);
+            }, 50);
         } catch (e) {
             console.error("Error saving image:", e);
-            alert("Could not save image. Please check console for details.");
+            alert("Could not save image. This is likely a CORS issue. Please check console for details.");
         }
+        */
     }
 
 </script>
