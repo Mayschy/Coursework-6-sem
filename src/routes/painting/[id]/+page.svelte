@@ -765,9 +765,9 @@
             </div>
         {/if}
         <div class="actions">
-            <button on:click={addToCart} class="add-to-cart-btn">Add to Cart</button>
-            <button on:click={openTryOnModal} class="try-on-btn">Try on Wall</button>
-        </div>
+    <button on:click={addToCart} class="add-to-cart-btn">Add to Cart</button>
+    <a href={`/painting/${data.painting._id}/ar`} class="try-on-btn" style="text-decoration: none;">Try on Wall (AR)</a>
+</div>
     </div>
 </div>
 
