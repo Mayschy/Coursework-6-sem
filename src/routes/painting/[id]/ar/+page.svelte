@@ -1,18 +1,150 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
+    import { page } from '$app/stores';
     import * as THREE from 'three';
     import { browser } from '$app/environment';
 
-    // Data is not needed for this minimal test
-    // export let data;
+    export let data; // Data from your +page.server.js or +layout.server.js
 
     let arCanvas; // Reference to the canvas DOM element
     let renderer, scene, camera;
     let xrSession = null;
+    let hitTestSource = null;
+    let referenceSpace = null; // New: Store the reference space here
+    let paintingMesh = null; // Our 3D model of the painting in AR
+    let reticle = null; // Visual indicator for hit-test results
 
-    let isLoading = true;
+    let isLoading = true; // State to show loading spinner
     let arSupportMessage = "Checking AR support...";
-    let currentStatus = "Attempting to start minimal AR...";
+    let currentStatus = "Loading painting...";
+
+    // Original painting image and frame image
+    let paintingImage;
+    let frameImage;
+    let combinedPaintingImageBitmap = null;
+
+    // --- Start: Image Loading and Combining Logic ---
+
+    async function setupImageLoadingAndCombining() {
+        console.log("AR: Setting up image loading and combining...");
+        currentStatus = "Loading painting images...";
+
+        paintingImage = new Image();
+        frameImage = new Image();
+
+        // Load frame image first
+        frameImage.src = '/frames/11429042.png';
+        frameImage.onload = () => {
+            console.log("AR: Frame image loaded.");
+            if (paintingImage.complete && paintingImage.src) {
+                combinePaintingAndFrame();
+            }
+        };
+        frameImage.onerror = (e) => {
+            console.error("AR: Failed to load frame image. Check path:", frameImage.src, e);
+            arSupportMessage = "Error loading frame image. Check console.";
+            isLoading = false;
+        };
+
+        // Load painting image via proxy
+        if (data.painting && data.painting.previewImage) {
+            const cloudinaryBasePrefix = 'https://res.cloudinary.com/dvfjsg1c6/image/upload/';
+            let cloudinaryPath = data.painting.previewImage.replace(cloudinaryBasePrefix, '');
+            if (data.painting.previewImage.includes('/upload/')) {
+                cloudinaryPath = data.painting.previewImage.split('/upload/')[1];
+            }
+            paintingImage.src = `/api/proxy-image/${cloudinaryPath}`;
+            console.log("AR: Proxying painting image from:", paintingImage.src);
+
+            paintingImage.onload = () => {
+                console.log("AR: Product painting image loaded (via proxy).");
+                if (frameImage.complete && frameImage.src) {
+                    combinePaintingAndFrame();
+                }
+            };
+            paintingImage.onerror = (e) => {
+                console.error("AR: Failed to load product painting image (via proxy). Check server logs:", paintingImage.src, e);
+                arSupportMessage = "Error loading product image. Check console and server logs.";
+                isLoading = false;
+            };
+        } else {
+            console.warn("AR: No painting data or previewImage available.");
+            arSupportMessage = "No painting image to display. Go back and select a painting.";
+            isLoading = false;
+        }
+    }
+
+    async function combinePaintingAndFrame() {
+        if (!paintingImage.complete || !frameImage.complete) {
+            console.log("AR: Waiting for painting or frame to load before combining.");
+            return;
+        }
+        if (paintingImage.naturalWidth === 0 || paintingImage.naturalHeight === 0 ||
+            frameImage.naturalWidth === 0 || frameImage.naturalHeight === 0) {
+            console.warn("AR: Painting or frame image failed to load with dimensions. Cannot combine.");
+            arSupportMessage = "Image dimensions invalid. Cannot combine.";
+            isLoading = false;
+            return;
+        }
+
+        const frameCanvas = document.createElement('canvas');
+        const frameCtx = frameCanvas.getContext('2d');
+
+        frameCanvas.width = frameImage.naturalWidth;
+        frameCanvas.height = frameImage.naturalHeight;
+
+        frameCtx.drawImage(frameImage, 0, 0, frameCanvas.width, frameCanvas.height);
+
+        const innerFrameX = 200; // These values might need tuning based on your frame image
+        const innerFrameY = 200;
+        const innerFrameWidth = frameImage.naturalWidth - (innerFrameX * 2);
+        const innerFrameHeight = frameImage.naturalHeight - (innerFrameY * 2);
+
+        const paintingAspectRatio = paintingImage.naturalWidth / paintingImage.naturalHeight;
+        const innerFrameAspectRatio = innerFrameWidth / innerFrameHeight;
+
+        let targetWidth, targetHeight;
+        if (paintingAspectRatio > innerFrameAspectRatio) {
+            targetWidth = innerFrameWidth;
+            targetHeight = targetWidth / paintingAspectRatio;
+        } else {
+            targetHeight = innerFrameHeight;
+            targetWidth = targetHeight * paintingAspectRatio;
+        }
+
+        let drawWidth = targetWidth;
+        let drawHeight = targetHeight;
+
+        if (paintingImage.naturalWidth < targetWidth || paintingImage.naturalHeight < targetHeight) {
+            const scaleFactor = Math.min(targetWidth / paintingImage.naturalWidth, targetHeight / paintingImage.naturalHeight);
+            drawWidth = paintingImage.naturalWidth * scaleFactor;
+            drawHeight = paintingImage.naturalHeight * scaleFactor;
+        }
+
+        const drawX = innerFrameX + (innerFrameWidth - drawWidth) / 2;
+        const drawY = innerFrameY + (innerFrameHeight - drawHeight) / 2;
+
+        frameCtx.drawImage(paintingImage, drawX, drawY, drawWidth, drawHeight);
+
+        try {
+            combinedPaintingImageBitmap = await createImageBitmap(frameCanvas);
+            console.log("AR: Combined painting and frame successfully into ImageBitmap.");
+            isLoading = false;
+            checkArSupport();
+        } catch (e) {
+            console.error("AR: Error creating ImageBitmap from combined canvas:", e);
+            arSupportMessage = "Error combining painting. Check console.";
+            isLoading = false;
+        } finally {
+             frameCanvas.width = 0;
+             frameCanvas.height = 0;
+        }
+    }
+
+    // --- End: Image Loading and Combining Logic ---
+
+
+    // --- Start: WebXR and Three.js Setup ---
 
     onMount(async () => {
         if (!browser) {
@@ -22,21 +154,8 @@
             return;
         }
 
-        // Initialize Three.js components
         scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(); // Camera will be updated by XR
-
-        // Explicitly set canvas dimensions before creating renderer
-        if (arCanvas) {
-            arCanvas.width = window.innerWidth * window.devicePixelRatio;
-            arCanvas.height = window.innerHeight * window.devicePixelRatio;
-            console.log(`AR: Canvas dimensions set to ${arCanvas.width}x${arCanvas.height}`);
-        } else {
-            console.error("AR: arCanvas is not available on mount. Cannot proceed with AR setup.");
-            arSupportMessage = "Error: AR canvas not found.";
-            isLoading = false;
-            return;
-        }
+        camera = new THREE.PerspectiveCamera();
 
         renderer = new THREE.WebGLRenderer({
             alpha: true, // Crucial for AR camera feed
@@ -45,148 +164,259 @@
             antialias: true
         });
         renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.xr.enabled = true; // Enable XR for the renderer
-        renderer.setClearColor(0x000000, 0); // Transparent background
-        renderer.setSize(window.innerWidth, window.innerHeight); // Set initial renderer size
+        renderer.xr.enabled = true;
+        renderer.setClearColor(0x000000, 0); // Explicitly set clear color to transparent black
 
-        // Handle window resize
-        const onWindowResize = () => {
-            if (arCanvas && renderer) {
-                arCanvas.width = window.innerWidth * window.devicePixelRatio;
-                arCanvas.height = window.innerHeight * window.devicePixelRatio;
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                if (camera) { // Camera aspect ratio will be set by WebXR, but good practice
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                }
-                console.log("AR: Canvas resized.");
-            }
-        };
-        window.addEventListener('resize', onWindowResize);
-        onWindowResize(); // Call once immediately
+        scene.add(new THREE.AmbientLight(0xFFFFFF, 1.0));
 
-        // Check WebXR support and try to start session directly
-        await checkAndStartMinimalAr();
+        const geometry = new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2);
+        const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        reticle = new THREE.Mesh(geometry, material);
+        reticle.matrixAutoUpdate = false;
+        reticle.visible = false;
+        scene.add(reticle);
+
+        setupImageLoadingAndCombining();
     });
 
-    async function checkAndStartMinimalAr() {
+    async function checkArSupport() {
+        if (!combinedPaintingImageBitmap) {
+            arSupportMessage = "Still loading painting. Please wait.";
+            return;
+        }
+
         if (navigator.xr) {
             try {
                 const supported = await navigator.xr.isSessionSupported('immersive-ar');
                 if (supported) {
-                    arSupportMessage = "AR supported! Attempting to start session...";
-                    await startMinimalArSession();
+                    arSupportMessage = "AR supported! Click 'Start AR' to begin.";
                 } else {
                     arSupportMessage = "Immersive AR is not supported on this device/browser.";
-                    isLoading = false;
                 }
             } catch (error) {
                 console.error("Error checking WebXR support:", error);
                 arSupportMessage = "Error checking AR support. See console.";
-                isLoading = false;
             }
         } else {
-            arSupportMessage = "WebXR not found. Please use a WebXR-compatible browser.";
-            isLoading = false;
+            arSupportMessage = "WebXR not found. Please use a WebXR-compatible browser (e.g., Chrome on Android, Safari on iOS 17+).";
         }
     }
 
-    async function startMinimalArSession() {
+    async function startArSession() {
+        if (!combinedPaintingImageBitmap) {
+            alert("Painting is still loading or failed to combine. Please wait or refresh.");
+            return;
+        }
+
+        // If session is already active, end it first (for 'Restart AR' button)
         if (xrSession) {
             xrSession.end();
             return;
         }
 
         try {
-            currentStatus = "Requesting AR session (minimal)...";
-            console.log("AR: Requesting WebXR session (minimal)...");
+            currentStatus = "Requesting AR session...";
             xrSession = await navigator.xr.requestSession('immersive-ar', {
-                // Minimal features, no hit-test, no dom-overlay for now
-                requiredFeatures: [], // Empty for minimal test, just camera feed
-                optionalFeatures: ['light-estimation'] // Still optional, doesn't hurt
+                requiredFeatures: ['hit-test', 'dom-overlay'],
+                optionalFeatures: ['light-estimation'],
+                domOverlay: { root: document.querySelector('.ar-ui-overlay') }
             });
-            console.log("AR: WebXR session obtained successfully (minimal).", xrSession);
 
+            // Set the session on the renderer as soon as it's available
             renderer.xr.setSession(xrSession);
-            console.log("AR: Renderer session set (minimal).");
-
             xrSession.addEventListener('end', onSessionEnd);
 
-            currentStatus = "AR session active. Expecting camera feed...";
+            currentStatus = "Detecting surfaces...";
 
-            console.log("AR: Setting animation loop (minimal)...");
+            let selectedReferenceSpaceType = null;
+            const potentialReferenceSpaces = ['local-floor', 'local', 'viewer'];
+
+            for (const spaceType of potentialReferenceSpaces) {
+                try {
+                    const space = await xrSession.requestReferenceSpace(spaceType);
+                    if (space) {
+                        selectedReferenceSpaceType = spaceType;
+                        referenceSpace = space; // Store the chosen reference space
+                        break;
+                    }
+                } catch (innerError) {
+                    console.warn(`AR: Reference space type '${spaceType}' not supported. Trying next.`, innerError);
+                }
+            }
+
+            if (!selectedReferenceSpaceType) {
+                // If no suitable reference space is found, end the session and throw error
+                xrSession.end(); // Clean up the session
+                throw new Error("No suitable XR reference space found on this device.");
+            }
+
+            hitTestSource = await xrSession.requestHitTestSource({ space: referenceSpace });
+
+            // ONLY START THE ANIMATION LOOP AFTER EVERYTHING IS READY
             renderer.setAnimationLoop(onXRFrame);
-            console.log("AR: Animation loop set (minimal).");
 
-            isLoading = false; // Hide loading spinner if session successfully started
+            if (arCanvas) {
+                arCanvas.addEventListener('touchstart', onTouchStart);
+            }
 
         } catch (error) {
-            console.error("AR: Error during minimal WebXR session setup:", error);
-            alert(`Could not start minimal AR session: ${error.message}.`);
-            currentStatus = `Minimal AR Session failed: ${error.message}`;
+            console.error("Error starting WebXR session:", error);
+            alert(`Could not start AR session: ${error.message}. Make sure your device supports AR and try again.`);
+            currentStatus = `AR Session failed: ${error.message}`;
             isLoading = false;
+            // Ensure xrSession is null if setup failed, to allow retrying
             if (xrSession) {
-                console.warn("AR: Attempting to end session due to setup error.");
                 xrSession.end();
             }
-            xrSession = null;
-            renderer.setAnimationLoop(null);
+            xrSession = null; // Explicitly nullify
         }
     }
 
     function onXRFrame(time, frame) {
-        if (!xrSession) {
-            console.error("AR: onXRFrame (minimal) - xrSession is null. Stopping loop.");
-            renderer.setAnimationLoop(null);
-            return;
-        }
-        if (!renderer || !scene || !camera) {
-            console.error("AR: onXRFrame (minimal) - Missing essential Three.js components. Stopping loop.");
-            renderer.setAnimationLoop(null);
-            return;
-        }
+    // --- Шаг 1: Проверка наличия основных объектов ---
+    if (!xrSession) {
+        console.error("AR: onXRFrame - xrSession is null. Stopping loop.");
+        renderer.setAnimationLoop(null);
+        return;
+    }
+    if (!renderer || !scene || !camera || !hitTestSource || !reticle || !referenceSpace) {
+        console.error("AR: onXRFrame - Missing essential Three.js/XR components. Stopping loop.", {
+            renderer: !!renderer, scene: !!scene, camera: !!camera,
+            hitTestSource: !!hitTestSource, reticle: !!reticle, referenceSpace: !!referenceSpace
+        });
+        renderer.setAnimationLoop(null);
+        return;
+    }
 
-        if (!frame) {
-            console.error("AR: onXRFrame (minimal) - 'frame' object is null/undefined. This is CRITICAL. Stopping loop.");
-            renderer.setAnimationLoop(null);
-            return;
-        }
+    // --- Шаг 2: Проверка объекта 'frame' ---
+    if (!frame) {
+        console.error("AR: onXRFrame - 'frame' object is null/undefined. This is highly unusual. Stopping loop.");
+        renderer.setAnimationLoop(null);
+        return;
+    }
 
-        if (!frame.session) {
-            console.error("AR: onXRFrame (minimal) - 'frame.session' is undefined. Stopping loop.");
-            renderer.setAnimationLoop(null);
-            return;
-        }
+    // --- Шаг 3: Проверка свойства 'session' внутри 'frame' ---
+    if (!frame.session) {
+        console.error("AR: onXRFrame - 'frame.session' is undefined. This is the root cause. Stopping loop.");
+        renderer.setAnimationLoop(null);
+        return;
+    }
+    // console.log("AR: onXRFrame - frame.session is defined."); // Закомментируйте, если слишком много логов
 
-        // Get reference space from renderer
-        const currentReferenceSpace = renderer.xr.getReferenceSpace();
-        if (!currentReferenceSpace) {
-            console.warn("AR: onXRFrame (minimal) - currentReferenceSpace is null. Waiting for XRManager.");
-            renderer.render(scene, camera); // Still render to show camera feed if possible
-            return; // Skip pose if referenceSpace not ready
-        }
+    const session = frame.session; // Здесь была ошибка
 
-        const viewerPose = frame.getViewerPose(currentReferenceSpace);
+    const viewerPose = frame.getViewerPose(referenceSpace);
 
-        if (viewerPose) {
-            // Update camera based on viewer pose
-            camera.matrix.fromArray(viewerPose.transform.matrix);
-            camera.updateMatrixWorld(true);
-            currentStatus = "Minimal AR active. Move device to see camera feed.";
+    if (viewerPose) {
+        // console.log("AR: Viewer Pose received. Camera should be active."); // diagnostic log - can be too noisy
+        camera.matrix.fromArray(viewerPose.transform.matrix);
+        camera.updateMatrixWorld(true);
+
+        const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+        if (hitTestResults.length > 0) {
+            const hitPose = hitTestResults[0].getPose(referenceSpace);
+            if (hitPose) {
+                reticle.matrix.fromArray(hitPose.transform.matrix);
+                reticle.visible = true;
+                currentStatus = "Tap to place painting.";
+            }
         } else {
-            // console.warn("AR: onXRFrame (minimal) - No Viewer Pose in this frame.");
-            currentStatus = "Minimal AR active. Waiting for camera pose.";
+            reticle.visible = false;
+            currentStatus = "Move around to find a surface.";
         }
+    } else {
+         // console.warn("AR: No Viewer Pose in this frame."); // diagnostic log - can be too noisy
+    }
 
-        renderer.render(scene, camera);
+    renderer.render(scene, camera);
+}
+    // ... (onTouchStart, onSessionEnd, onDestroy remain the same as previous full code)
+    async function onTouchStart(event) {
+        if (!xrSession || !hitTestSource || paintingMesh) return;
+
+        if (reticle && reticle.visible) {
+            const hitPose = new THREE.Pose(reticle.position, reticle.quaternion);
+
+            if (combinedPaintingImageBitmap) {
+                scene.remove(reticle);
+                reticle = null;
+
+                const texture = new THREE.CanvasTexture(combinedPaintingImageBitmap);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                texture.needsUpdate = true;
+
+                const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+
+                let realWorldPaintingWidthMeters = 0.8;
+                let realWorldPaintingHeightMeters = 1.2;
+
+                if (data.painting && data.painting.dimensions) {
+                    const dimMatch = data.painting.dimensions.match(/(\d+)x(\d+)\s*cm/i);
+                    if (dimMatch) {
+                        realWorldPaintingWidthMeters = parseFloat(dimMatch[1]) / 100;
+                        realWorldPaintingHeightMeters = parseFloat(dimMatch[2]) / 100;
+                        console.log(`AR: Using painting dimensions: ${realWorldPaintingWidthMeters}m x ${realWorldPaintingHeightMeters}m`);
+                    }
+                } else {
+                    console.warn("AR: Painting dimensions not found in data. Using default size.");
+                    const aspectRatio = combinedPaintingImageBitmap.width / combinedPaintingImageBitmap.height;
+                    realWorldPaintingHeightMeters = 1.0;
+                    realWorldPaintingWidthMeters = realWorldPaintingHeightMeters * aspectRatio;
+                }
+
+                const geometry = new THREE.PlaneGeometry(realWorldPaintingWidthMeters, realWorldPaintingHeightMeters);
+                paintingMesh = new THREE.Mesh(geometry, material);
+
+                paintingMesh.position.set(hitPose.position.x, hitPose.position.y, hitPose.position.z);
+                paintingMesh.quaternion.set(hitPose.orientation.x, hitPose.orientation.y, hitPose.orientation.z, hitPose.orientation.w);
+
+                const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(hitPose.orientation);
+                paintingMesh.position.add(normal.multiplyScalar(0.005));
+
+                scene.add(paintingMesh);
+                currentStatus = "Painting placed! Move around to view.";
+                console.log("AR: Painting placed in AR.");
+
+                arCanvas.removeEventListener('touchstart', onTouchStart);
+            }
+        }
     }
 
     function onSessionEnd(event) {
-        console.log("AR: WebXR session ended (minimal).");
+        console.log("AR: WebXR session ended.");
         xrSession = null;
+        if (hitTestSource) {
+            hitTestSource.cancel();
+            hitTestSource = null;
+        }
+        if (referenceSpace) { // Nullify reference space too
+            referenceSpace = null;
+        }
         renderer.setAnimationLoop(null);
-        currentStatus = "AR Session ended (minimal).";
-        isLoading = false; // Allow re-attempt
+
+        if (paintingMesh) {
+            scene.remove(paintingMesh);
+            if (paintingMesh.geometry) paintingMesh.geometry.dispose();
+            if (paintingMesh.material) paintingMesh.material.dispose();
+            paintingMesh = null;
+        }
+        if (reticle) {
+            if (reticle.geometry) reticle.geometry.dispose();
+            if (reticle.material) reticle.material.dispose();
+            const geometry = new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2);
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            reticle = new THREE.Mesh(geometry, material);
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
+        }
+
+        if (arCanvas) {
+            arCanvas.removeEventListener('touchstart', onTouchStart);
+        }
+        currentStatus = "AR Session ended.";
+        checkArSupport();
     }
 
     onDestroy(() => {
@@ -196,8 +426,19 @@
         if (renderer) {
             renderer.dispose();
         }
-        window.removeEventListener('resize', onWindowResize); // Clean up resize listener
+        if (paintingMesh) {
+            if (paintingMesh.geometry) paintingMesh.geometry.dispose();
+            if (paintingMesh.material) paintingMesh.material.dispose();
+        }
+        if (reticle) {
+            if (reticle.geometry) reticle.geometry.dispose();
+            if (reticle.material) reticle.material.dispose();
+        }
+        if (combinedPaintingImageBitmap) {
+            combinedPaintingImageBitmap.close();
+        }
     });
+
 </script>
 
 <style>
@@ -223,11 +464,11 @@
         position: absolute;
         top: 0;
         left: 0;
+        /* z-index: 1; - Это не нужно, если canvas первый ребенок и alpha:true */
     }
 
-    /* Keep a minimal UI overlay just for status and a button */
     .ar-ui-overlay {
-        position: relative;
+        position: relative; /* Чтобы z-index работал относительно контейнера */
         z-index: 10;
         display: flex;
         flex-direction: column;
@@ -237,7 +478,7 @@
         height: 100%;
         padding: 20px;
         box-sizing: border-box;
-        pointer-events: none; /* Allows clicks to pass through to canvas if needed, buttons override this */
+        pointer-events: none;
     }
 
     .ar-status {
@@ -318,11 +559,11 @@
 
         <div class="ar-actions">
             {#if !isLoading && arSupportMessage.includes("AR supported")}
-                <button on:click={checkAndStartMinimalAr} class="ar-button">
+                <button on:click={startArSession} class="ar-button">
                     {#if !xrSession}
-                        Start Minimal AR
+                        Start AR
                     {:else}
-                        Restart Minimal AR
+                        Restart AR (Debugging)
                     {/if}
                 </button>
             {/if}
