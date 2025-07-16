@@ -178,8 +178,8 @@
         // --- Calculate where to draw the painting inside the frame ---
         // These values are based on the analysis of your 11429042.png frame (3328x4864)
         // Adjust these if your frame or its inner transparent area changes significantly
-        const innerFrameX = 200;
-        const innerFrameY = 200;
+        const innerFrameX = 350;
+        const innerFrameY = 350;
         const innerFrameWidth = frameCanvas.width - (innerFrameX * 2); // 3328 - 200 - 200 = 2928
         const innerFrameHeight = frameCanvas.height - (innerFrameY * 2); // 4864 - 200 - 200 = 4464
 
