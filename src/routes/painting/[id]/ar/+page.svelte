@@ -10,7 +10,7 @@
     let renderer, scene, camera;
     let xrSession = null;
     let hitTestSource = null;
-    let referenceSpace = null; // New: Store the reference space here
+    let referenceSpace = null; // We will still store this, but let Three.js update it
     let paintingMesh = null; // Our 3D model of the painting in AR
     let reticle = null; // Visual indicator for hit-test results
 
@@ -215,136 +215,134 @@
         }
 
         try {
-        currentStatus = "Requesting AR session...";
-        console.log("AR: Requesting WebXR session...");
-        xrSession = await navigator.xr.requestSession('immersive-ar', {
-            requiredFeatures: ['hit-test', 'dom-overlay'],
-            optionalFeatures: ['light-estimation'],
-            domOverlay: { root: document.querySelector('.ar-ui-overlay') }
-        });
-        console.log("AR: WebXR session obtained successfully.", xrSession);
+            currentStatus = "Requesting AR session...";
+            console.log("AR: Requesting WebXR session...");
+            xrSession = await navigator.xr.requestSession('immersive-ar', {
+                requiredFeatures: ['hit-test', 'dom-overlay'],
+                optionalFeatures: ['light-estimation'],
+                domOverlay: { root: document.querySelector('.ar-ui-overlay') }
+            });
+            console.log("AR: WebXR session obtained successfully.", xrSession);
 
-        renderer.xr.setSession(xrSession);
-        console.log("AR: Renderer session set.");
-        xrSession.addEventListener('end', onSessionEnd);
+            // Set the session on the renderer immediately.
+            // Three.js's XRManager will handle requesting the appropriate reference space internally.
+            renderer.xr.setSession(xrSession);
+            console.log("AR: Renderer session set.");
 
-        currentStatus = "Detecting surfaces...";
+            // Add the session end listener
+            xrSession.addEventListener('end', onSessionEnd);
 
-        let selectedReferenceSpaceType = null;
-        const potentialReferenceSpaces = ['local-floor', 'local', 'viewer'];
+            currentStatus = "Detecting surfaces...";
 
-        for (const spaceType of potentialReferenceSpaces) {
-            try {
-                console.log(`AR: Attempting to request reference space: ${spaceType}`);
-                const space = await xrSession.requestReferenceSpace(spaceType);
-                if (space) {
-                    selectedReferenceSpaceType = spaceType;
-                    referenceSpace = space;
-                    console.log(`AR: Successfully obtained reference space: ${spaceType}`);
-                    break;
-                }
-            } catch (innerError) {
-                console.warn(`AR: Reference space type '${spaceType}' not supported. Trying next.`, innerError);
+            // Request hit test source. Note: it must be bound to a specific space.
+            // We'll use 'viewer' space for the hit test source initially,
+            // as this is usually supported and allows us to get results relative to the viewer.
+            // The pose we get *from* the hit test will then be relative to the actual referenceSpace.
+            hitTestSource = await xrSession.requestHitTestSource({ space: await xrSession.requestReferenceSpace('viewer') });
+            console.log("AR: Hit test source obtained using 'viewer' space.");
+
+
+            // The referenceSpace variable will be set by Three.js internally
+            // during the animation loop. We'll access it there.
+
+            // ONLY START THE ANIMATION LOOP AFTER EVERYTHING IS READY
+            console.log("AR: Setting animation loop...");
+            renderer.setAnimationLoop(onXRFrame);
+            console.log("AR: Animation loop set.");
+
+            if (arCanvas) {
+                arCanvas.addEventListener('touchstart', onTouchStart);
             }
+
+        } catch (error) {
+            console.error("AR: Error during WebXR session setup:", error);
+            alert(`Could not start AR session: ${error.message}. Make sure your device supports AR and try again.`);
+            currentStatus = `AR Session failed: ${error.message}`;
+            isLoading = false;
+            if (xrSession) {
+                console.warn("AR: Attempting to end session due to setup error.");
+                xrSession.end();
+            }
+            xrSession = null;
+            hitTestSource = null;
+            referenceSpace = null; // Ensure this is null
+            renderer.setAnimationLoop(null);
         }
-
-        if (!selectedReferenceSpaceType) {
-            console.error("AR: No suitable XR reference space found. Ending session.");
-            xrSession.end();
-            throw new Error("No suitable XR reference space found on this device.");
-        }
-
-        console.log("AR: Requesting hit test source...");
-        hitTestSource = await xrSession.requestHitTestSource({ space: referenceSpace });
-        console.log("AR: Hit test source obtained.");
-
-        // ONLY START THE ANIMATION LOOP AFTER EVERYTHING IS READY
-        console.log("AR: Setting animation loop...");
-        renderer.setAnimationLoop(onXRFrame);
-        console.log("AR: Animation loop set.");
-
-        if (arCanvas) {
-            arCanvas.addEventListener('touchstart', onTouchStart);
-        }
-
-    } catch (error) {
-        console.error("AR: Error during WebXR session setup:", error);
-        alert(`Could not start AR session: ${error.message}. Make sure your device supports AR and try again.`);
-        currentStatus = `AR Session failed: ${error.message}`;
-        isLoading = false;
-        // Ensure xrSession is null if setup failed, to allow retrying
-        if (xrSession) {
-            console.warn("AR: Attempting to end session due to setup error.");
-            xrSession.end();
-        }
-        xrSession = null;
-        hitTestSource = null;
-        referenceSpace = null;
-        renderer.setAnimationLoop(null); // Stop any potential running loop
     }
-}
+
     function onXRFrame(time, frame) {
-    // --- Шаг 1: Проверка наличия основных объектов ---
-    if (!xrSession) {
-        console.error("AR: onXRFrame - xrSession is null. Stopping loop.");
-        renderer.setAnimationLoop(null);
-        return;
-    }
-    if (!renderer || !scene || !camera || !hitTestSource || !reticle || !referenceSpace) {
-        console.error("AR: onXRFrame - Missing essential Three.js/XR components. Stopping loop.", {
-            renderer: !!renderer, scene: !!scene, camera: !!camera,
-            hitTestSource: !!hitTestSource, reticle: !!reticle, referenceSpace: !!referenceSpace
-        });
-        renderer.setAnimationLoop(null);
-        return;
-    }
+        // Updated checks for Three.js managing reference space
+        if (!xrSession) {
+            console.error("AR: onXRFrame - xrSession is null. Stopping loop.");
+            renderer.setAnimationLoop(null);
+            return;
+        }
+        if (!renderer || !scene || !camera || !hitTestSource || !reticle) { // Removed referenceSpace from here
+            console.error("AR: onXRFrame - Missing essential Three.js/XR components (excluding referenceSpace). Stopping loop.", {
+                renderer: !!renderer, scene: !!scene, camera: !!camera,
+                hitTestSource: !!hitTestSource, reticle: !!reticle
+            });
+            renderer.setAnimationLoop(null);
+            return;
+        }
 
-    // --- Шаг 2: Проверка объекта 'frame' ---
-    if (!frame) {
-        console.error("AR: onXRFrame - 'frame' object is null/undefined. This is highly unusual. Stopping loop.");
-        renderer.setAnimationLoop(null);
-        return;
-    }
+        // --- Step 2: Check 'frame' object ---
+        if (!frame) {
+            console.error("AR: onXRFrame - 'frame' object is null/undefined. This is highly unusual. Stopping loop.");
+            renderer.setAnimationLoop(null);
+            return;
+        }
 
-    // --- Шаг 3: Проверка свойства 'session' внутри 'frame' ---
-    if (!frame.session) {
-        console.error("AR: onXRFrame - 'frame.session' is undefined. This is the root cause. Stopping loop.");
-        renderer.setAnimationLoop(null);
-        return;
-    }
-    // console.log("AR: onXRFrame - frame.session is defined."); // Закомментируйте, если слишком много логов
+        // --- Step 3: Check 'session' property inside 'frame' ---
+        if (!frame.session) {
+            console.error("AR: onXRFrame - 'frame.session' is undefined. This is the root cause. Stopping loop.");
+            renderer.setAnimationLoop(null);
+            return;
+        }
+        // console.log("AR: onXRFrame - frame.session is defined.");
 
-    const session = frame.session; // Здесь была ошибка
+        // IMPORTANT: Get the reference space from the renderer's XRManager in each frame
+        const currentReferenceSpace = renderer.xr.getReferenceSpace();
+        if (!currentReferenceSpace) {
+            console.warn("AR: onXRFrame - currentReferenceSpace is null. Waiting for XRManager to provide it.");
+            // We can continue to render, but hit tests and viewer pose will be invalid
+            // if we need a specific reference space for them.
+            renderer.render(scene, camera); // Still render to show camera feed if possible
+            return; // Skip pose and hit test if referenceSpace is not yet available
+        }
+        referenceSpace = currentReferenceSpace; // Update our global referenceSpace variable
 
-    const viewerPose = frame.getViewerPose(referenceSpace);
+        const viewerPose = frame.getViewerPose(referenceSpace); // Use the currentReferenceSpace
 
-    if (viewerPose) {
-        // console.log("AR: Viewer Pose received. Camera should be active."); // diagnostic log - can be too noisy
-        camera.matrix.fromArray(viewerPose.transform.matrix);
-        camera.updateMatrixWorld(true);
+        if (viewerPose) {
+            // console.log("AR: Viewer Pose received. Camera should be active.");
+            camera.matrix.fromArray(viewerPose.transform.matrix);
+            camera.updateMatrixWorld(true);
 
-        const hitTestResults = frame.getHitTestResults(hitTestSource);
+            // Hit test results are now relative to the referenceSpace
+            const hitTestResults = frame.getHitTestResults(hitTestSource);
 
-        if (hitTestResults.length > 0) {
-            const hitPose = hitTestResults[0].getPose(referenceSpace);
-            if (hitPose) {
-                reticle.matrix.fromArray(hitPose.transform.matrix);
-                reticle.visible = true;
-                currentStatus = "Tap to place painting.";
+            if (hitTestResults.length > 0) {
+                const hitPose = hitTestResults[0].getPose(referenceSpace);
+                if (hitPose) {
+                    reticle.matrix.fromArray(hitPose.transform.matrix);
+                    reticle.visible = true;
+                    currentStatus = "Tap to place painting.";
+                }
+            } else {
+                reticle.visible = false;
+                currentStatus = "Move around to find a surface.";
             }
         } else {
-            reticle.visible = false;
-            currentStatus = "Move around to find a surface.";
+             // console.warn("AR: No Viewer Pose in this frame.");
         }
-    } else {
-         // console.warn("AR: No Viewer Pose in this frame."); // diagnostic log - can be too noisy
+
+        renderer.render(scene, camera);
     }
 
-    renderer.render(scene, camera);
-}
-    // ... (onTouchStart, onSessionEnd, onDestroy remain the same as previous full code)
     async function onTouchStart(event) {
-        if (!xrSession || !hitTestSource || paintingMesh) return;
+        // Now using the referenceSpace that is updated in onXRFrame
+        if (!xrSession || !hitTestSource || !referenceSpace || paintingMesh) return;
 
         if (reticle && reticle.visible) {
             const hitPose = new THREE.Pose(reticle.position, reticle.quaternion);
@@ -401,9 +399,11 @@
             hitTestSource.cancel();
             hitTestSource = null;
         }
-        if (referenceSpace) { // Nullify reference space too
-            referenceSpace = null;
-        }
+        // No longer explicitly setting referenceSpace to null here,
+        // as Three.js XRManager will handle its lifecycle.
+        // It will become null automatically when session ends.
+        referenceSpace = null; // Explicitly nullify our variable
+
         renderer.setAnimationLoop(null);
 
         if (paintingMesh) {
@@ -475,11 +475,11 @@
         position: absolute;
         top: 0;
         left: 0;
-        /* z-index: 1; - Это не нужно, если canvas первый ребенок и alpha:true */
+        /* z-index: 1; - This is not needed if canvas is the first child and alpha:true */
     }
 
     .ar-ui-overlay {
-        position: relative; /* Чтобы z-index работал относительно контейнера */
+        position: relative; /* To make z-index work relative to the container */
         z-index: 10;
         display: flex;
         flex-direction: column;
@@ -489,7 +489,7 @@
         height: 100%;
         padding: 20px;
         box-sizing: border-box;
-        pointer-events: none;
+        pointer-events: none; /* Allows clicks to pass through to canvas if needed, buttons override this */
     }
 
     .ar-status {
@@ -499,14 +499,14 @@
         border-radius: 5px;
         font-size: 1.1rem;
         margin-bottom: 20px;
-        pointer-events: auto;
+        pointer-events: auto; /* Allow interaction with status box */
     }
 
     .ar-actions {
         display: flex;
         gap: 15px;
         margin-top: auto;
-        pointer-events: auto;
+        pointer-events: auto; /* Allow interaction with buttons */
     }
 
     .ar-button, .ar-close-button {
