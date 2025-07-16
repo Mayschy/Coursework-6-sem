@@ -1,7 +1,8 @@
 <script>
     import { invalidateAll } from '$app/navigation';
+    import { fly } from 'svelte/transition'; // Assuming you use this for modal transition
 
-    export let data;
+    export let data; // Data from your +page.server.js
 
     let showModal = false; // For "Add to cart" modal
     let successMessage = '';
@@ -15,13 +16,12 @@
     // Use ImageBitmap for wallImage for security
     let wallImageBitmap = null; // Will store ImageBitmap for the uploaded wall
 
-    // NEW: Image object for the frame
+    // Image object for the frame
     let frameImage = new Image();
     // !!! IMPORTANT: Update this path to your frame image !!!
-    // If your frame is local (e.g., in static/frames/), use '/frames/11429042.png'
-    // If your frame is also on Cloudinary, use the proxy like the paintingImage
-    frameImage.src = '/frames/11429042.png'; // Assuming frame is local for now
-    // frameImage.crossOrigin = "anonymous"; // No need for local files
+    // Assuming frame is local in static/frames/
+    frameImage.src = '/frames/11429042.png'; // Make sure this path is correct for your project
+    // frameImage.crossOrigin = "anonymous"; // Not needed for local files
     frameImage.onload = () => {
         console.log("Frame image loaded.");
         // If painting is already loaded, combine them
@@ -31,11 +31,11 @@
     };
     frameImage.onerror = (e) => {
         console.error("Failed to load frame image. Check path:", frameImage.src, e);
-        alert("Error loading frame image. Please check console for details.");
+        // You might want a user-facing error here too
     };
 
 
-    // NEW: Combined painting (painting inside the frame)
+    // Combined painting (painting inside the frame)
     let combinedPaintingImageBitmap = null; // Store ImageBitmap of combined image
 
     // Original painting image (used to generate the combined image)
@@ -46,22 +46,11 @@
     $: {
         if (data.painting && data.painting.previewImage) {
             // Transform Cloudinary URL to our proxy URL
-            // Example: "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v12345/my_image.jpg"
-            // becomes "/api/proxy-image/v12345/my_image.jpg"
-
-            // Get the path part of the Cloudinary URL.
-            // This is a simplified example. You might need a more robust parsing
-            // depending on the exact structure of your Cloudinary URLs.
             const cloudinaryBasePrefix = 'https://res.cloudinary.com/dvfjsg1c6/image/upload/'; // !!! Match your cloud name !!!
             let cloudinaryPath = data.painting.previewImage.replace(cloudinaryBasePrefix, '');
-            // Handle cases where previewImage might include transformations like /f_auto,q_auto/
-            // You might need to adjust this depending on your exact Cloudinary URL structure.
-            // For example, if your original path is always after '/upload/',
-            // you might split by '/upload/' and take the second part.
             if (data.painting.previewImage.includes('/upload/')) {
                 cloudinaryPath = data.painting.previewImage.split('/upload/')[1];
             }
-
 
             paintingImage.src = `/api/proxy-image/${cloudinaryPath}`;
             console.log("Proxying painting image from:", paintingImage.src);
@@ -75,7 +64,7 @@
             };
             paintingImage.onerror = (e) => {
                 console.error("Failed to load product painting image (via proxy). Check server logs:", paintingImage.src, e);
-                alert("Error loading product image. Please check console and server logs.");
+                // You might want a user-facing error here too
             };
         }
     }
@@ -121,6 +110,12 @@
     // --- Logic for "Try on Wall" feature ---
 
     function openTryOnModal() {
+        // Only open if the combined image is ready
+        if (!combinedPaintingImageBitmap) {
+            alert("Painting with frame is still loading. Please wait a moment.");
+            return;
+        }
+
         showTryOnModal = true;
         wallImageBitmap = null; // Clear previous wall image bitmap
 
@@ -130,7 +125,7 @@
                 ctx = canvasElement.getContext('2d');
 
                 // --- NEW LOGIC FOR INITIAL PAINTING SIZE ---
-                // Set initial canvas dimensions
+                // Set initial canvas dimensions to fit the modal
                 const initialCanvasWidth = 800; // A reasonable default width for the modal's canvas
                 const initialCanvasHeight = 500; // A reasonable default height
 
@@ -143,7 +138,6 @@
                     let targetPaintingWidth = initialCanvasWidth * 0.35; // Start at 35% of canvas width
 
                     // Ensure the initial size is not larger than its natural size (if it's a very small image)
-                    // and also not too large compared to its natural size to avoid huge initial zoom.
                     targetPaintingWidth = Math.min(targetPaintingWidth, combinedPaintingImageBitmap.width);
 
                     // Maintain aspect ratio for height
@@ -161,10 +155,8 @@
                         paintingX = (initialCanvasWidth / 2) - (paintingWidth / 2);
                         paintingY = (initialCanvasHeight / 2) - (paintingHeight / 2);
                     }
-
-
                 } else {
-                    // Fallback default if combinedPaintingImageBitmap is not ready
+                    // Fallback default if combinedPaintingImageBitmap is not ready (should be checked above)
                     paintingWidth = 200;
                     paintingHeight = 200;
                     paintingX = (initialCanvasWidth / 2) - (paintingWidth / 2);
@@ -179,9 +171,16 @@
     function closeTryOnModal() {
         showTryOnModal = false;
         isDragging = false; // Ensure dragging state is reset
+        // Release ImageBitmaps to free memory
+        if (wallImageBitmap) {
+            wallImageBitmap.close();
+            wallImageBitmap = null;
+        }
+        // combinedPaintingImageBitmap might be reused, so don't close it unless absolutely necessary
+        // combinedPaintingImageBitmap.close(); // Only if you never need it again until full reload
     }
 
-    // NEW: Function to combine the painting with the frame
+    // Function to combine the painting with the frame
     async function combinePaintingAndFrame() {
         if (!paintingImage.complete || !frameImage.complete) {
             console.log("Waiting for painting or frame to load before combining.");
@@ -207,7 +206,7 @@
         // --- Calculate where to draw the painting inside the frame ---
         // THESE VALUES ARE CRITICAL. Double-check them for your specific PNG frame.
         // If your PNG frame has different transparent area, adjust these.
-        // For 11429042.jpg (3328x4864) with 200px border:
+        // For 11429042.png (3328x4864) with 200px border:
         const innerFrameX = 200; // X-coordinate of the top-left corner of the inner frame area
         const innerFrameY = 200; // Y-coordinate of the top-left corner of the inner frame area
         const innerFrameWidth = frameImage.naturalWidth - (innerFrameX * 2); // Width of the inner frame area
@@ -272,14 +271,9 @@
         try {
             combinedPaintingImageBitmap = await createImageBitmap(frameCanvas);
             console.log("Combined painting and frame successfully into ImageBitmap.");
-            // Recalculate initial paintingHeight based on combined image bitmap
-            // This happens only once here. The actual paintingWidth/Height for the wall
-            // are initialized in openTryOnModal.
-            // So, no direct need to set paintingHeight here again, it's done in openTryOnModal.
-            // We just ensure the bitmap is ready.
-            if (showTryOnModal) { // Only redraw if modal is already open
-                // Recalculate size based on current canvas size if modal is open
-                openTryOnModal(); // Re-run initial sizing and drawing
+            // If the modal is already open (e.g., user opened it while images were loading), redraw
+            if (showTryOnModal) {
+                openTryOnModal(); // Re-run initial sizing and drawing to use the new bitmap
             }
 
         } catch (e) {
@@ -310,10 +304,12 @@
                 let canvasW = wallImageBitmap.width;
                 let canvasH = wallImageBitmap.height;
 
+                // Scale down if image is larger than maxCanvasWidth
                 if (canvasW > maxCanvasWidth) {
                     canvasH = (maxCanvasWidth / canvasW) * canvasH;
                     canvasW = maxCanvasWidth;
                 }
+                // Scale down if image is larger than maxCanvasHeight (after width scaling)
                 if (canvasH > maxCanvasHeight) {
                     canvasW = (maxCanvasHeight / canvasH) * canvasW;
                     canvasH = maxCanvasHeight;
@@ -336,7 +332,7 @@
                     paintingX = (canvasW / 2) - (paintingWidth / 2);
                     paintingY = (canvasH / 2) - (paintingHeight / 2);
 
-                     // Ensure painting fits on screen initially if it somehow becomes too big due to initial calculations
+                    // Ensure painting fits on screen initially if it somehow becomes too big due to initial calculations
                     if (paintingHeight > canvasH) {
                         paintingHeight = canvasH * 0.8; // Fit to 80% of canvas height
                         paintingWidth = paintingHeight / (combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width);
@@ -344,8 +340,6 @@
                         paintingY = (canvasH / 2) - (paintingHeight / 2);
                     }
                 }
-
-
                 drawCanvas();
             } catch (e) {
                 console.error("Failed to load wall image as ImageBitmap:", e);
@@ -357,10 +351,9 @@
 
     function drawCanvas() {
         if (!ctx) {
-            // This should not happen often if openTryOnModal uses rAF correctly
-            console.warn("Canvas context not initialized. Re-initializing.");
+            console.warn("Canvas context not initialized. Attempting to re-initialize.");
             if (canvasElement) {
-                 ctx = canvasElement.getContext('2d');
+                ctx = canvasElement.getContext('2d');
             } else {
                 console.error("Canvas element not available for drawing.");
                 return;
@@ -402,18 +395,32 @@
         };
     }
 
+    // Touch events for mobile compatibility (for "Try on Wall" modal on Desktop)
+    function getTouchPos(canvas, touch) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+            x: (touch.clientX - rect.left) * scaleX,
+            y: (touch.clientY - rect.top) * scaleY
+        };
+    }
+
     function handleMouseDown(event) {
         // Only allow dragging if wall image is present and combined painting is loaded
         if (!wallImageBitmap || !combinedPaintingImageBitmap || paintingHeight === undefined) return;
         event.preventDefault(); // Prevent default browser drag behavior
+
+        const clientX = event.clientX;
+        const clientY = event.clientY;
 
         const mousePos = getMousePos(canvasElement, event);
         // Check if mouse clicked on the painting
         if (mousePos.x >= paintingX && mousePos.x <= paintingX + paintingWidth &&
             mousePos.y >= paintingY && mousePos.y <= paintingY + paintingHeight) {
             isDragging = true;
-            startX = mousePos.x;
-            startY = mousePos.y;
+            startX = clientX; // Store client coordinates for mouse
+            startY = clientY;
             offsetX = mousePos.x - paintingX;
             offsetY = mousePos.y - paintingY;
             canvasElement.style.cursor = 'grabbing';
@@ -423,9 +430,23 @@
     function handleMouseMove(event) {
         if (!isDragging) return;
         event.preventDefault(); // Prevent text selection etc.
-        const mousePos = getMousePos(canvasElement, event);
-        paintingX = mousePos.x - offsetX;
-        paintingY = mousePos.y - offsetY;
+
+        const clientX = event.clientX;
+        const clientY = event.clientY;
+
+        const deltaX = clientX - startX;
+        const deltaY = clientY - startY;
+
+        const rect = canvasElement.getBoundingClientRect();
+        const scaleX = canvasElement.width / rect.width;
+        const scaleY = canvasElement.height / rect.height;
+
+        paintingX += deltaX * scaleX;
+        paintingY += deltaY * scaleY;
+
+        startX = clientX;
+        startY = clientY;
+
         drawCanvas();
     }
 
@@ -478,7 +499,106 @@
         }
     }
 
-    // Save the image (temporarily disabled)
+    // Touch handlers for "Try on Wall" modal (desktop version on touch-enabled screens)
+    let initialPinchDistance = null;
+    let lastTouchX = null;
+    let lastTouchY = null;
+
+    function handleTouchStart(event) {
+        if (!wallImageBitmap || !combinedPaintingImageBitmap || paintingHeight === undefined) return;
+        event.preventDefault(); // Prevent scrolling/zooming
+
+        if (event.touches.length === 1) {
+            // One finger touch for dragging
+            isDragging = true;
+            const touchPos = getTouchPos(canvasElement, event.touches[0]);
+            if (touchPos.x >= paintingX && touchPos.x <= paintingX + paintingWidth &&
+                touchPos.y >= paintingY && touchPos.y <= paintingY + paintingHeight) {
+                lastTouchX = event.touches[0].clientX;
+                lastTouchY = event.touches[0].clientY;
+                offsetX = touchPos.x - paintingX;
+                offsetY = touchPos.y - paintingY;
+            } else {
+                isDragging = false; // Not touching the painting
+            }
+        } else if (event.touches.length === 2) {
+            // Two fingers for pinching (scaling)
+            isDragging = false; // Disable dragging
+            initialPinchDistance = getDistanceBetweenTouches(event.touches[0], event.touches[1]);
+        }
+    }
+
+    function handleTouchMove(event) {
+        if (!wallImageBitmap || !combinedPaintingImageBitmap || paintingHeight === undefined) return;
+        event.preventDefault();
+
+        if (event.touches.length === 1 && isDragging) {
+            // One finger dragging
+            const currentTouchX = event.touches[0].clientX;
+            const currentTouchY = event.touches[0].clientY;
+
+            const deltaX = currentTouchX - lastTouchX;
+            const deltaY = currentTouchY - lastTouchY;
+
+            const rect = canvasElement.getBoundingClientRect();
+            const scaleX = canvasElement.width / rect.width;
+            const scaleY = canvasElement.height / rect.height;
+
+            paintingX += deltaX * scaleX;
+            paintingY += deltaY * scaleY;
+
+            lastTouchX = currentTouchX;
+            lastTouchY = currentTouchY;
+
+            drawCanvas();
+        } else if (event.touches.length === 2 && initialPinchDistance !== null) {
+            // Two fingers pinching
+            const currentPinchDistance = getDistanceBetweenTouches(event.touches[0], event.touches[1]);
+            if (currentPinchDistance === 0) return; // Avoid division by zero
+
+            const scaleFactor = currentPinchDistance / initialPinchDistance;
+
+            // --- Apply limits similar to mouse wheel ---
+            const minPaintingWidthOnCanvas = Math.max(20, canvasElement.width * 0.05);
+            const maxPaintingWidthOnCanvas = canvasElement.width * 1.5;
+
+            let newWidth = paintingWidth * scaleFactor;
+            newWidth = Math.max(minPaintingWidthOnCanvas, Math.min(newWidth, maxPaintingWidthOnCanvas));
+
+            const currentAspectRatio = combinedPaintingImageBitmap.height / combinedPaintingImageBitmap.width;
+            let newHeight = newWidth * currentAspectRatio;
+
+            // Center scaling around the midpoint of the two touches
+            const touch1Pos = getTouchPos(canvasElement, event.touches[0]);
+            const touch2Pos = getTouchPos(canvasElement, event.touches[1]);
+            const midpointX = (touch1Pos.x + touch2Pos.x) / 2;
+            const midpointY = (touch1Pos.y + touch2Pos.y) / 2;
+
+            paintingX = midpointX - (newWidth / paintingWidth) * (midpointX - paintingX);
+            paintingY = midpointY - (newHeight / paintingHeight) * (midpointY - paintingY);
+
+            paintingWidth = newWidth;
+            paintingHeight = newHeight;
+
+            initialPinchDistance = currentPinchDistance; // Update initial distance for continuous scaling
+            drawCanvas();
+        }
+    }
+
+    function handleTouchEnd() {
+        isDragging = false;
+        initialPinchDistance = null;
+        lastTouchX = null;
+        lastTouchY = null;
+    }
+
+    function getDistanceBetweenTouches(touch1, touch2) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Save the image (temporarily disabled for CORS reasons, re-enable when ready)
     function savePreviewImage() {
         alert("Saving is temporarily disabled for testing. Please check console for errors.");
         // Re-enable this block once you confirm preview works and CORS is handled for all images.
@@ -488,11 +608,12 @@
             return;
         }
         if (!combinedPaintingImageBitmap || paintingHeight === undefined) {
-             alert('Painting with frame not fully loaded. Please wait and try again!');
+            alert('Painting with frame not fully loaded. Please wait and try again!');
             return;
         }
 
         try {
+            // Using a timeout to ensure canvas is rendered
             setTimeout(() => {
                 const dataURL = canvasElement.toDataURL('image/png');
                 const link = document.createElement('a');
@@ -510,7 +631,6 @@
         }
         */
     }
-
 </script>
 
 <style>
@@ -765,9 +885,9 @@
             </div>
         {/if}
         <div class="actions">
-    <button on:click={addToCart} class="add-to-cart-btn">Add to Cart</button>
-    <a href={`/painting/${data.painting._id}/ar`} class="try-on-btn" style="text-decoration: none;">Try on Wall (AR)</a>
-</div>
+            <button on:click={addToCart} class="add-to-cart-btn">Add to Cart</button>
+            <button on:click={openTryOnModal} class="try-on-btn">Try on Wall</button>
+        </div>
     </div>
 </div>
 
@@ -799,14 +919,15 @@
                     on:mousedown={handleMouseDown}
                     on:mousemove={handleMouseMove}
                     on:mouseup={handleMouseUp}
-                    on:mouseleave={handleMouseUp}
                     on:wheel={handleMouseWheel}
+                    on:touchstart={handleTouchStart}
+                    on:touchmove={handleTouchMove}
+                    on:touchend={handleTouchEnd}
                 ></canvas>
             </div>
-
-            <div class="actions" style="margin-top: 0; justify-content: center;">
-                <button on:click={savePreviewImage} class="download-btn">Save Result</button>
-                <button on:click={closeTryOnModal}>Close</button>
+            <div class="try-on-buttons">
+                <button class="download-btn" on:click={savePreviewImage}>Save Preview</button>
+                <button class="close-modal-btn" on:click={closeTryOnModal}>Close</button>
             </div>
         </div>
     </div>
