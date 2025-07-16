@@ -3,50 +3,47 @@
 
     export let data;
 
-    let showModal = false; // Для модального окна "Добавить в корзину"
+    let showModal = false; // For "Add to cart" modal
     let successMessage = '';
     let errorMessage = '';
 
-    // Новые переменные для модального окна примерки
+    // New variables for the "Try on wall" modal
     let showTryOnModal = false;
-    let uploadedWallImage = null; // Будет хранить объект File для загруженного изображения стены
-    let canvasElement; // Ссылка на HTML-элемент canvas
-    let ctx; // Контекст 2D для canvas
+    let uploadedWallImageFile = null; // Will store the File object for the uploaded wall image
+    let canvasElement; // Reference to the HTML canvas element
+    let ctx; // 2D drawing context for canvas
 
-    let paintingImage; // Объект Image для картины
-    let wallImage;     // Объект Image для загруженной стены
+    let paintingImage = new Image(); // Image object for the product painting
+    let wallImage = new Image();     // Image object for the uploaded wall
 
-    // Позиция и размер картины на стене
-    let paintingX = 50; // Начальная X-позиция
-    let paintingY = 50; // Начальная Y-позиция
-    let paintingWidth = 200; // Начальная ширина
-    let paintingHeight; // Будет рассчитана из пропорций
+    // Position and size of the painting on the wall
+    let paintingX = 50; // Initial X-position
+    let paintingY = 50; // Initial Y-position
+    let paintingWidth = 200; // Initial width in canvas pixels
+    let paintingHeight; // Will be calculated based on aspect ratio
 
     let isDragging = false;
     let startX, startY;
     let offsetX, offsetY;
 
-    // Загрузка изображения картины при открытии модального окна
-    $: if (showTryOnModal && data.painting.previewImage && !paintingImage) {
-        paintingImage = new Image();
-        paintingImage.src = data.painting.previewImage;
-        paintingImage.onload = () => {
-            if (paintingImage.width && data.painting.dimensions) {
-                // Извлекаем размеры картины из строки "ШиринаxВысота cm"
-                const dims = data.painting.dimensions.split('x').map(s => parseFloat(s.trim()));
-                if (dims.length === 2 && !isNaN(dims[0]) && !isNaN(dims[1]) && dims[0] > 0) {
-                    const aspectRatio = dims[1] / dims[0]; // Высота / Ширина
-                    paintingHeight = paintingWidth * aspectRatio; // Сохраняем пропорции
-                } else {
-                    // Fallback если размеры не удалось распарсить
-                    paintingHeight = paintingWidth * (paintingImage.height / paintingImage.width);
+    // Load the painting image when the component mounts or data changes
+    // This makes sure the painting image is always loaded, even before the modal opens
+    $: {
+        if (data.painting && data.painting.previewImage) {
+            paintingImage.src = data.painting.previewImage;
+            paintingImage.onload = () => {
+                // Calculate initial painting height based on actual image aspect ratio
+                // This is a fallback if dimensions from data.painting.dimensions are not perfect
+                const actualAspectRatio = paintingImage.height / paintingImage.width;
+                if (!paintingHeight) { // Only set if not already set by parsed dimensions
+                    paintingHeight = paintingWidth * actualAspectRatio;
                 }
-            } else {
-                 paintingHeight = paintingWidth * (paintingImage.height / paintingImage.width);
-            }
-            drawCanvas();
-        };
+                drawCanvas(); // Redraw once painting is loaded
+            };
+            paintingImage.onerror = () => console.error("Failed to load painting image:", data.painting.previewImage);
+        }
     }
+
 
     async function addToCart() {
         errorMessage = '';
@@ -74,85 +71,125 @@
         }
     }
 
-    // --- Логика для примерки на стене ---
+    // --- Logic for "Try on Wall" feature ---
 
     function openTryOnModal() {
         showTryOnModal = true;
-        // Сбросить состояние при открытии, если нужно
-        uploadedWallImage = null;
-        wallImage = null;
+        // Reset state when opening the modal
+        uploadedWallImageFile = null;
+        wallImage.src = ''; // Clear previous wall image
+        // Reset painting position and size
         paintingX = 50;
         paintingY = 50;
         paintingWidth = 200;
-        paintingHeight = undefined; // Пересчитается
+        // Recalculate paintingHeight based on its *actual* loaded dimensions
+        if (paintingImage.width && paintingImage.height) {
+            paintingHeight = paintingWidth * (paintingImage.height / paintingImage.width);
+        } else {
+            paintingHeight = 200; // Fallback default
+        }
+        // Initial draw when modal opens (will be empty or show placeholder)
+        // Ensure canvas and ctx are ready before drawing
+        requestAnimationFrame(() => { // Use rAF to ensure canvasElement is bound
+            if (canvasElement) {
+                ctx = canvasElement.getContext('2d');
+                drawCanvas();
+            }
+        });
     }
 
     function closeTryOnModal() {
         showTryOnModal = false;
+        isDragging = false; // Ensure dragging state is reset
     }
 
     function handleWallImageUpload(event) {
         const file = event.target.files[0];
         if (file) {
-            uploadedWallImage = file;
+            uploadedWallImageFile = file;
             const reader = new FileReader();
             reader.onload = (e) => {
-                wallImage = new Image();
                 wallImage.src = e.target.result;
                 wallImage.onload = () => {
-                    // Устанавливаем размеры canvas по размеру загруженного изображения
-                    canvasElement.width = wallImage.width;
-                    canvasElement.height = wallImage.height;
+                    // Adjust canvas dimensions to fit the wall image while maintaining aspect ratio
+                    const maxCanvasWidth = 1000; // Max width for the canvas
+                    const maxCanvasHeight = 600; // Max height for the canvas
+
+                    let canvasW = wallImage.width;
+                    let canvasH = wallImage.height;
+
+                    if (canvasW > maxCanvasWidth) {
+                        canvasH = (maxCanvasWidth / canvasW) * canvasH;
+                        canvasW = maxCanvasWidth;
+                    }
+                    if (canvasH > maxCanvasHeight) {
+                        canvasW = (maxCanvasHeight / canvasH) * canvasW;
+                        canvasH = maxCanvasHeight;
+                    }
+
+                    canvasElement.width = canvasW;
+                    canvasElement.height = canvasH;
+
+                    // Reset painting position relative to the new canvas size
+                    paintingX = (canvasW / 2) - (paintingWidth / 2);
+                    paintingY = (canvasH / 2) - (paintingHeight / 2);
+
                     drawCanvas();
                 };
+                wallImage.onerror = () => console.error("Failed to load wall image.");
             };
             reader.readAsDataURL(file);
         }
     }
 
     function drawCanvas() {
-        if (!ctx) { // Инициализируем контекст только один раз
-            ctx = canvasElement.getContext('2d');
+        if (!ctx) { // Initialize context if not already done (should be from openTryOnModal)
+            console.warn("Canvas context not initialized. This might be a timing issue.");
+            return;
         }
 
-        // Очищаем canvas
+        // Clear the entire canvas
         ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-        // Рисуем изображение стены (если загружено)
-        if (wallImage) {
+        // 1. Draw the wall image
+        if (wallImage.src && wallImage.complete) {
             ctx.drawImage(wallImage, 0, 0, canvasElement.width, canvasElement.height);
         } else {
-             // Если нет стены, можно нарисовать серый фон или инструкцию
+            // If no wall image, draw a placeholder background
             ctx.fillStyle = '#f0f0f0';
             ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
             ctx.fillStyle = '#666';
             ctx.font = '24px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Загрузите фото вашей стены', canvasElement.width / 2, canvasElement.height / 2);
+            ctx.fillText('Upload your wall photo', canvasElement.width / 2, canvasElement.height / 2);
         }
 
-
-        // Рисуем картину (если загружена)
-        if (paintingImage && paintingHeight !== undefined) {
+        // 2. Draw the painting *on top* of the wall image
+        if (paintingImage.src && paintingImage.complete && paintingHeight !== undefined) {
             ctx.drawImage(paintingImage, paintingX, paintingY, paintingWidth, paintingHeight);
         }
     }
 
-    // Логика перетаскивания и изменения размера
+    // Helper to get mouse position relative to canvas
     function getMousePos(canvas, evt) {
         const rect = canvas.getBoundingClientRect();
+        // Scale mouse coordinates from CSS pixels to canvas pixels
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
         return {
-            x: evt.clientX - rect.left,
-            y: evt.clientY - rect.top
+            x: (evt.clientX - rect.left) * scaleX,
+            y: (evt.clientY - rect.top) * scaleY
         };
     }
 
     function handleMouseDown(event) {
-        if (!wallImage || !paintingImage || paintingHeight === undefined) return;
+        // Only allow dragging if wall image is present and painting is loaded
+        if (!wallImage.src || !paintingImage.src || paintingHeight === undefined) return;
+        event.preventDefault(); // Prevent default browser drag behavior
 
         const mousePos = getMousePos(canvasElement, event);
-        // Проверяем, попали ли мы мышью в картину
+        // Check if mouse clicked on the painting
         if (mousePos.x >= paintingX && mousePos.x <= paintingX + paintingWidth &&
             mousePos.y >= paintingY && mousePos.y <= paintingY + paintingHeight) {
             isDragging = true;
@@ -166,6 +203,7 @@
 
     function handleMouseMove(event) {
         if (!isDragging) return;
+        event.preventDefault(); // Prevent text selection etc.
         const mousePos = getMousePos(canvasElement, event);
         paintingX = mousePos.x - offsetX;
         paintingY = mousePos.y - offsetY;
@@ -174,37 +212,38 @@
 
     function handleMouseUp() {
         isDragging = false;
-        canvasElement.style.cursor = 'grab';
+        if (canvasElement) { // Check if canvasElement exists before trying to set cursor
+            canvasElement.style.cursor = 'grab';
+        }
     }
 
-    // Логика изменения размера колесиком мыши (масштабирование)
+    // Logic for resizing with mouse wheel (scaling)
     function handleMouseWheel(event) {
-        if (!wallImage || !paintingImage || paintingHeight === undefined) return;
-        event.preventDefault(); // Предотвращаем прокрутку страницы
+        if (!wallImage.src || !paintingImage.src || paintingHeight === undefined) return;
+        event.preventDefault(); // Prevent page scrolling
 
-        const scaleFactor = 1.1; // Коэффициент масштабирования
+        const scaleFactor = 1.1; // Scale coefficient
         const mousePos = getMousePos(canvasElement, event);
 
-        // Проверяем, находится ли курсор над картиной
+        // Check if cursor is over the painting
         if (mousePos.x >= paintingX && mousePos.x <= paintingX + paintingWidth &&
             mousePos.y >= paintingY && mousePos.y <= paintingY + paintingHeight) {
 
-            // Рассчитываем новую ширину и высоту
             let newWidth, newHeight;
-            if (event.deltaY < 0) { // Колесико вверх (увеличение)
+            if (event.deltaY < 0) { // Mouse wheel up (zoom in)
                 newWidth = paintingWidth * scaleFactor;
-            } else { // Колесико вниз (уменьшение)
+            } else { // Mouse wheel down (zoom out)
                 newWidth = paintingWidth / scaleFactor;
             }
 
-            // Ограничиваем минимальный и максимальный размер
-            newWidth = Math.max(50, Math.min(newWidth, canvasElement.width * 0.9));
+            // Limit min/max size based on canvas size
+            newWidth = Math.max(paintingImage.width * 0.1, Math.min(newWidth, canvasElement.width * 0.9)); // Ensure painting is not too small/big
 
-            // Сохраняем пропорции
+            // Maintain aspect ratio
             const currentAspectRatio = paintingImage.height / paintingImage.width;
             newHeight = newWidth * currentAspectRatio;
 
-            // Центрируем масштабирование относительно курсора
+            // Center scaling relative to the cursor position
             paintingX = mousePos.x - (newWidth / paintingWidth) * (mousePos.x - paintingX);
             paintingY = mousePos.y - (newHeight / paintingHeight) * (mousePos.y - paintingY);
 
@@ -214,25 +253,33 @@
         }
     }
 
-    // Сохранение изображения
+    // Save the image
     function savePreviewImage() {
-        if (!canvasElement || !wallImage) {
-            alert('Сначала загрузите фото стены и разместите картину!');
+        if (!canvasElement || !wallImage.src || !wallImage.complete) {
+            alert('Please upload a wall photo first and place the painting!');
             return;
         }
-        const dataURL = canvasElement.toDataURL('image/png'); // Можно выбрать 'image/jpeg'
+        // Ensure paintingImage is also loaded
+        if (!paintingImage.src || !paintingImage.complete || paintingHeight === undefined) {
+             alert('Painting image not fully loaded. Please wait and try again!');
+            return;
+        }
+
+        const dataURL = canvasElement.toDataURL('image/png'); // Using PNG for better quality with transparent backgrounds if needed
         const link = document.createElement('a');
-        link.download = `preview_${data.painting.title.replace(/\s+/g, '_')}.png`;
+        // Sanitize filename to remove special characters
+        const sanitizedTitle = data.painting.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.download = `preview_${sanitizedTitle}.png`;
         link.href = dataURL;
-        document.body.appendChild(link);
+        document.body.appendChild(link); // Append to body is good practice for cross-browser compatibility
         link.click();
-        document.body.removeChild(link);
+        document.body.removeChild(link); // Clean up the element
     }
 
 </script>
 
 <style>
-    /* Существующие стили */
+    /* Your existing styles, make sure to include the new ones I added for the modal and canvas */
     .painting-detail {
         display: flex;
         gap: 2rem;
@@ -243,33 +290,39 @@
         border-radius: 10px;
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     }
+
     .painting-image {
         flex: 1;
         min-width: 300px;
     }
+
     .painting-image img {
         max-width: 100%;
         height: auto;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
+
     .painting-info {
         flex: 1;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
     }
+
     .painting-info h1 {
         font-size: 2.5rem;
         color: #333;
         margin-bottom: 1rem;
     }
+
     .painting-info p {
         font-size: 1.1rem;
         color: #666;
         margin-bottom: 0.5rem;
         line-height: 1.6;
     }
+
     .painting-info .price {
         font-size: 2rem;
         color: #007bff;
@@ -277,11 +330,12 @@
         margin-top: 1.5rem;
         margin-bottom: 1.5rem;
     }
+
     .actions {
         display: flex;
         gap: 1rem;
         margin-top: 1.5rem;
-        flex-wrap: wrap; /* Для кнопок на маленьких экранах */
+        flex-wrap: wrap; /* For buttons on small screens */
     }
 
     .add-to-cart-btn, .try-on-btn, .download-btn {
@@ -313,7 +367,7 @@
     }
 
     .download-btn {
-        background-color: #6c757d; /* Серый цвет для кнопки сохранения */
+        background-color: #6c757d; /* Grey color for save button */
         color: white;
     }
     .download-btn:hover {
@@ -321,7 +375,7 @@
         transform: translateY(-2px);
     }
 
-    /* Модальные окна */
+    /* Modal overlays */
     .modal-overlay {
         position: fixed;
         top: 0;
@@ -333,8 +387,8 @@
         justify-content: center;
         align-items: center;
         z-index: 1000;
-        padding: 1rem; /* Отступ по краям */
-        box-sizing: border-box; /* Учитываем padding в размере */
+        padding: 1rem; /* Padding for small screens */
+        box-sizing: border-box; /* Include padding in element's total width and height */
     }
 
     .modal-content {
@@ -343,9 +397,9 @@
         border-radius: 10px;
         text-align: center;
         box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
-        max-width: 90%; /* Ограничение ширины */
-        max-height: 90%; /* Ограничение высоты */
-        overflow-y: auto; /* Прокрутка, если контент не помещается */
+        max-width: 90%; /* Max width for general modal */
+        max-height: 90%; /* Max height for general modal */
+        overflow-y: auto; /* Scroll if content overflows */
         min-width: 300px;
         display: flex;
         flex-direction: column;
@@ -365,7 +419,7 @@
         color: #dc3545;
     }
 
-    .modal-content button { /* Кнопки внутри модального окна */
+    .modal-content button { /* Buttons inside the modal */
         margin-top: 1.5rem;
         padding: 0.8rem 1.5rem;
         background-color: #007bff;
@@ -380,9 +434,9 @@
         background-color: #0056b3;
     }
 
-    /* Стили для модального окна примерки */
+    /* Styles for the "Try on wall" modal */
     .try-on-modal-content {
-        max-width: 1200px; /* Увеличим для canvas */
+        max-width: 1200px; /* Wider for the canvas */
         width: 100%;
         display: flex;
         flex-direction: column;
@@ -395,27 +449,29 @@
 
     .try-on-canvas-container {
         width: 100%;
-        /* Максимальная высота, чтобы canvas не был слишком большим */
+        /* Max height to keep the canvas from being too tall */
         max-height: 600px;
-        overflow: auto; /* Для скролла, если изображение стены очень большое */
+        overflow: auto; /* Scroll if wall image is very large */
         border: 1px solid #ddd;
         border-radius: 8px;
         box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
-        display: flex; /* Для центрирования canvas внутри */
+        display: flex; /* For centering canvas inside */
         justify-content: center;
         align-items: center;
         background-color: #e9e9e9;
-        cursor: grab; /* Курсор для перетаскивания */
+        cursor: grab; /* Cursor for dragging */
+        /* Set a min-height so it's visible before image loads */
+        min-height: 300px;
     }
 
     canvas {
-        display: block; /* Убираем лишние отступы */
-        background-color: white; /* Фон canvas */
-        max-width: 100%; /* Гарантируем, что canvas впишется в контейнер */
-        height: auto; /* Сохраняем пропорции */
+        display: block; /* Remove extra spacing */
+        background-color: white; /* Canvas background */
+        max-width: 100%; /* Ensure canvas fits in container */
+        height: auto; /* Maintain aspect ratio */
     }
 
-    /* Адаптивные стили */
+    /* Responsive styles */
     @media (max-width: 768px) {
         .painting-detail {
             flex-direction: column;
@@ -436,10 +492,12 @@
             padding: 1rem;
         }
     }
+
+    /* Existing gallery styles */
     .detail-images-gallery {
         margin-top: 2rem;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        grid-template-columns: repeat(auto-fit, minminmax(150px, 1fr));
         gap: 1rem;
     }
 
@@ -449,13 +507,6 @@
         border-radius: 8px;
         box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         object-fit: cover;
-    }
-
-    @media (max-width: 768px) {
-        .detail-images-gallery {
-            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-            gap: 0.8rem;
-        }
     }
 </style>
 
@@ -480,7 +531,7 @@
         {/if}
         <div class="actions">
             <button on:click={addToCart} class="add-to-cart-btn">Add to Cart</button>
-            <button on:click={openTryOnModal} class="try-on-btn">Примерить на стене</button>
+            <button on:click={openTryOnModal} class="try-on-btn">Try on Wall</button>
         </div>
     </div>
 </div>
@@ -503,8 +554,8 @@
 {#if showTryOnModal}
     <div class="modal-overlay" on:click={closeTryOnModal}>
         <div class="modal-content try-on-modal-content" on:click|stopPropagation>
-            <h3>Примерка картины на стене</h3>
-            <p>Загрузите фото вашей стены, а затем перетащите и измените размер картины.</p>
+            <h3>Try Painting on Your Wall</h3>
+            <p>Upload your wall photo, then drag and resize the painting.</p>
             <input type="file" accept="image/*" on:change={handleWallImageUpload} />
 
             <div class="try-on-canvas-container">
@@ -519,8 +570,8 @@
             </div>
 
             <div class="actions" style="margin-top: 0; justify-content: center;">
-                <button on:click={savePreviewImage} class="download-btn">Сохранить результат</button>
-                <button on:click={closeTryOnModal}>Закрыть</button>
+                <button on:click={savePreviewImage} class="download-btn">Save Result</button>
+                <button on:click={closeTryOnModal}>Close</button>
             </div>
         </div>
     </div>
